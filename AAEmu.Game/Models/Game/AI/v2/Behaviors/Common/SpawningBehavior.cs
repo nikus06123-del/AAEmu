@@ -43,6 +43,8 @@ public class SpawningBehavior : BaseCombatBehavior
             foreach (var npcSkill in skills)
             {
                 var skillTemplate = SkillManager.Instance.GetSkillTemplate(npcSkill.SkillId);
+                if (skillTemplate == null)
+                    continue; // missing template reference in npc data, skip instead of crashing the spawn loop
                 var skill = new Skill(skillTemplate);
 
                 var skillCaster = SkillCaster.GetByType(SkillCasterType.Unit);

@@ -64,6 +64,15 @@ public class CSStartSkillPacket() : GamePacket(CSOffsets.CSStartSkillPacket, 1)
         
         Logger.Info($"StartSkill: Id {skillId}, flag {flag}, caster={skillCaster.ObjId}, target={skillCastTarget.ObjId}");
 
+        // Guard against the client requesting a skill id that has no template,
+        // which would otherwise end up as a NullReferenceException inside Skill
+        var requestedSkillTemplate = SkillManager.Instance.GetSkillTemplate(skillId);
+        if (requestedSkillTemplate == null)
+        {
+            Logger.Warn($"StartSkill: skill {skillId} has no template, ignoring request");
+            return;
+        }
+
         var skillResult = SkillResult.Success;
         var skillResultErrorValue = 0u;
         Skill skill = null;
@@ -96,7 +105,7 @@ public class CSStartSkillPacket() : GamePacket(CSOffsets.CSStartSkillPacket, 1)
         {
             // Mount or Slave skill
             Logger.Trace($"SkillCasterMount - MountSkillTemplateId {scm.MountSkillTemplateId}");
-            skill = new Skill(SkillManager.Instance.GetSkillTemplate(skillId));
+            skill = new Skill(requestedSkillTemplate);
 
             var caster = world.GetBaseUnit(skillCaster.ObjId);
             var mate = caster as Mate;
@@ -154,7 +163,7 @@ public class CSStartSkillPacket() : GamePacket(CSOffsets.CSStartSkillPacket, 1)
         else if (SkillManager.Instance.IsDefaultSkill(skillId) || SkillManager.Instance.IsCommonSkill(skillId) && skillCaster is not SkillItem)
         {
             // Is it a common skill?
-            skill = new Skill(SkillManager.Instance.GetSkillTemplate(skillId)); // TODO: переделать / rewrite ...
+            skill = new Skill(requestedSkillTemplate); // TODO: переделать / rewrite ...
             skillResult = skill.Use(Connection.ActiveChar, skillCaster, skillCastTarget, skillObject, false, out skillResultErrorValue);
             if (skillResult == SkillResult.Success && skillId < 5000 && skillCaster.ObjId == Connection.ActiveChar.ObjId)
             {
@@ -172,20 +181,19 @@ public class CSStartSkillPacket() : GamePacket(CSOffsets.CSStartSkillPacket, 1)
             if (si.SkillSourceItem == null || skillId != si.SkillSourceItem.Template.UseSkillId && si.SkillSourceItem.Template.BindType != ItemBindType.BindOnPickup)
                 return;
             // si.ItemTemplateId = item.TemplateId;
-            skill = new Skill(SkillManager.Instance.GetSkillTemplate(skillId));
+            skill = new Skill(requestedSkillTemplate);
             skillResult = skill.Use(player, skillCaster, skillCastTarget, skillObject, false, out skillResultErrorValue);
         }
         else if (Connection.ActiveChar.Skills.Skills.ContainsKey(skillId))
         {
             // Is it one of our learned character skills?
-            var template = SkillManager.Instance.GetSkillTemplate(skillId);
-            skill = new Skill(template, Connection.ActiveChar);
+            skill = new Skill(requestedSkillTemplate, Connection.ActiveChar);
             skillResult = skill.Use(Connection.ActiveChar, skillCaster, skillCastTarget, skillObject, false, out skillResultErrorValue);
         }
         else if (skillId > 0 && Connection.ActiveChar.Skills.IsVariantOfSkill(skillId))
         {
             // Variant of learned skill?
-            skill = new Skill(SkillManager.Instance.GetSkillTemplate(skillId));
+            skill = new Skill(requestedSkillTemplate);
             skillResult = skill.Use(Connection.ActiveChar, skillCaster, skillCastTarget, skillObject, false, out skillResultErrorValue);
         }
         else
@@ -193,7 +201,7 @@ public class CSStartSkillPacket() : GamePacket(CSOffsets.CSStartSkillPacket, 1)
             // No idea what this is
             Logger.Warn($"StartSkill: Id {skillId}, undefined use type");
             // If it's a valid skill cast it. This fixes interactions with quest items/doodads.
-            skill = new Skill(SkillManager.Instance.GetSkillTemplate(skillId));
+            skill = new Skill(requestedSkillTemplate);
             skillResult = skill.Use(Connection.ActiveChar, skillCaster, skillCastTarget, skillObject, false, out skillResultErrorValue);
         }
         SendSkillFailIfNeeded();
