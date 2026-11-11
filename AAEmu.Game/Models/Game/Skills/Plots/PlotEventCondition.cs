@@ -10,20 +10,22 @@ public class PlotEventCondition
     public int Position { get; set; }
     public PlotEffectSource SourceId { get; set; }
     public PlotEffectTarget TargetId { get; set; }
-    //public bool NotifyFailure { get; set; }
 
-    // TODO 1.2 // public bool NotifyFailure { get; set; }
+    /// <summary>
+    /// Conditions flagged as NotifyFailure are evaluated for their side effects (chance
+    /// rolls, dice) but their failure does not gate the execution of the event or stop
+    /// the traversal of its next events (upstream issue #978, e.g. Fortuna Die).
+    /// </summary>
+    public bool NotifyFailure { get; set; }
 
     public bool CheckCondition(PlotState state, PlotTargetInfo targetInfo)
     {
-        if (GetConditionResult(state, targetInfo, this))
+        var result = GetConditionResult(state, targetInfo, this);
+
+        if (NotifyFailure)
             return true;
 
-        //if (NotifyFailure)
-        ;//Maybe do something here?
-
-        return false;
-
+        return result;
     }
 
     private bool GetConditionResult(PlotState state, PlotTargetInfo targetInfo, PlotEventCondition condition)

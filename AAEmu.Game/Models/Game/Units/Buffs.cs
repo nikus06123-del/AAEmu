@@ -447,6 +447,25 @@ public class Buffs : IBuffs
                                     last = e;
                     break;
             }
+            if (last == null && buff.Template.GroupId > 0 && buff.Template.GroupRank > 0)
+            {
+                // Buffs sharing a GroupId are ranks of the same effect family (e.g. the
+                // rune-combination ranks rolled by Fortuna Die, upstream issue #978).
+                // Without this, a newly rolled rank would stack next to the still-running
+                // rank instead of replacing it, and a lower rank could downgrade a buff.
+                foreach (var e in new List<Buff>(_effects))
+                {
+                    if (e is not { InUse: true } || e.Template.GroupId != buff.Template.GroupId ||
+                        e.Template.BuffId == buff.Template.BuffId)
+                        continue;
+
+                    if (buff.Template.GroupRank >= e.Template.GroupRank)
+                        last = e;
+                    else
+                        return; // a lower-rank family member can neither replace nor stack
+                }
+            }
+
             if (last != null)
             {
                 last.OverwriteWith(buff);
