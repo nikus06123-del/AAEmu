@@ -115,17 +115,27 @@ public class QuestStep(QuestComponentKind step, Quest parent)
         {
             // Validate using combined from all components
             var objectiveStatus = Parent.GetQuestObjectiveStatus();
-            res = objectiveStatus >= QuestObjectiveStatus.Overachieved;
             Parent.Status = objectiveStatus >= QuestObjectiveStatus.QuestComplete
                 ? QuestStatus.Ready
                 : QuestStatus.Progress;
+            // Quests with an auto-complete condition (QuestActConAutoComplete, e.g. on the
+            // Reward component) and no Ready step to report at (e.g. quest 3419, upstream
+            // issue #1282) must be allowed to advance once their objectives are met.
+            // Quests that do have a Ready step keep waiting for the report act, which is
+            // enforced further down below.
+            res = objectiveStatus >= QuestObjectiveStatus.QuestComplete;
         }
 
         // Handle Supply/Reward Distribution
         res &= Parent.DistributeRewards(true);
 
-        // LetItBeDone type of quests, are always forced forward using the Report Acts
-        if (ThisStep == QuestComponentKind.Progress && Parent.Template.LetItDone)
+        // LetItBeDone type of quests, are always forced forward using the Report Acts,
+        // but only when the quest actually has a Ready step to report at.
+        // Quests with an auto-complete condition (QuestActConAutoComplete, e.g. on the Reward
+        // component) and no Ready step (e.g. quest 3419, upstream issue #1282) would otherwise
+        // be permanently stuck in Progress with their objectives already met.
+        if (ThisStep == QuestComponentKind.Progress && Parent.Template.LetItDone &&
+            Parent.Template.GetComponents(QuestComponentKind.Ready).Length > 0)
             res = false;
 
         return res;
