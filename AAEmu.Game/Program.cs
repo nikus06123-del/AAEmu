@@ -193,6 +193,9 @@ public static class Program
                 services.AddSingleton<InstantGameManager>();
                 services.AddSingleton<IInstantGameManager>(sp => sp.GetRequiredService<InstantGameManager>());
 
+                services.AddSingleton<InstantGameStatsManager>();
+                services.AddSingleton<IInstantGameStatsManager>(sp => sp.GetRequiredService<InstantGameStatsManager>());
+
                 services.AddSingleton<ItemManager>();
                 services.AddSingleton<IItemManager>(sp => sp.GetRequiredService<ItemManager>());
 

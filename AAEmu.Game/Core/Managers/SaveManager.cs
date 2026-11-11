@@ -18,6 +18,7 @@ public class SaveManager(
     IItemManager itemManager,
     IAuctionManager auctionManager,
     ICrimeManager crimeManager,
+    IInstantGameStatsManager instantGameStatsManager,
     IWorldManager worldManager) : Singleton<SaveManager>, ISaveManager
 {
     private static Logger Logger { get; } = LogManager.GetCurrentClassLogger();
@@ -97,6 +98,8 @@ public class SaveManager(
                         var savedAuctionHouse = auctionManager.Save(connection, transaction);
                         // Crimes
                         var savedCrimes = crimeManager.Save(connection, transaction);
+                        // Arena (instant game) rating stats
+                        var savedInstantGameStats = instantGameStatsManager.Save(connection, transaction);
 
                         // Characters
                         var savedCharacters = 0;
@@ -125,6 +128,7 @@ public class SaveManager(
                         totalCommits += saveItems.Item1 + saveItems.Item2 + saveItems.Item3;
                         totalCommits += savedAuctionHouse.Item1 + savedAuctionHouse.Item2;
                         totalCommits += savedCrimes.Item1 + savedCrimes.Item2;
+                        totalCommits += savedInstantGameStats.updatedCount;
                         totalCommits += savedCharacters;
                         totalCommits += savedSlaves;
 

@@ -293,6 +293,12 @@ public partial class InstantGame
         // (honor is persisted with the character's regular save).
         AwardMatchHonor();
 
+        // Fix #1323: persist per-character arena rating (Elo) and match statistics
+        InstantGameStatsManager.Instance.RecordMatchResult(
+            _battlefield.Id,
+            _corps1Result.State, _corps1Result.Members,
+            _corps2Result.State, _corps2Result.Members);
+
         // Restore real factions right away so nameplates are correct during the results screen
         foreach (var character in _players.ToList())
             RestoreOriginalFaction(character);
