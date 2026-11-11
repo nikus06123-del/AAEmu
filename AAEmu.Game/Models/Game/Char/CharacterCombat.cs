@@ -64,7 +64,11 @@ public partial class Character
         // Escalating respawn timer — runs BEFORE base.DoDie sends SCUnitDeathPacket
         ComputeDeathWaitTime();
 
-        LastDurabilityLoss = Level >= AppConfiguration.Instance.World.MinimumExpLossLevel
+        // Fix #1323: deaths inside an arena (instant game) must not damage equipment.
+        // Exp loss is already skipped for non-default world instances, but durability
+        // loss was applied unconditionally, so players lost gear durability for dying
+        // in a match they cannot avoid dying in.
+        LastDurabilityLoss = Level >= AppConfiguration.Instance.World.MinimumExpLossLevel && CurrentInstantGame == null
             ? ItemManager.Instance.GetDeathDurabilityLossRatio()
             : (byte)0;
 

@@ -205,6 +205,16 @@ public class WorldConfig
     /// Score awarded to a Gladiator arena team for each assist
     /// </summary>
     public int GladiatorAssistScore { get; set; } = 15;
+
+    /// <summary>
+    /// Honor points awarded to each member of the winning Gladiator arena corps
+    /// </summary>
+    public int GladiatorWinHonor { get; set; } = 50;
+
+    /// <summary>
+    /// Honor points awarded to each member of the losing or drawing Gladiator arena corps
+    /// </summary>
+    public int GladiatorLossHonor { get; set; } = 10;
 }
 
 public class DungeonLoadConfig

@@ -9,6 +9,7 @@ using AAEmu.Game.Models.Game.World;
 using AAEmu.Game.Models.Game.World.Transform;
 using AAEmu.Game.Models.StaticValues;
 using AAEmu.Game.Utils;
+using AAEmu.Game.Models;
 
 using NLog;
 
@@ -37,6 +38,11 @@ public partial class InstantGame
     // return players into Red/Blue corps factions instead of their real one
     // (Pirates, Nations, custom factions...). The snapshot avoids that entirely.
     private readonly Dictionary<Character, FactionsEnum> _preArenaFactions = [];
+
+    // Fix #1323: true when the match ended because a corps reached the victory score.
+    // Used by SendResult() to decide whether the outcome must be derived from the
+    // remaining match data (time-up ending) or is already known.
+    private volatile bool _victoryScoreReached;
 
     public InstantGame(Battlefield battlefield)
     {
@@ -258,13 +264,62 @@ public partial class InstantGame
 
     private void SendResult()
     {
-        BroadcastPacket(new SCInstantGameEndPacket(_zoneInstanceId, BattlefieldEndingReason.AchievementScore,
+        // Fix #1323: derive the actual outcome of the match instead of always reporting
+        // both corps as "Lose" with the generic AchievementScore reason. When a corps
+        // reaches the victory score, AddScore() already flags it as the winner; when the
+        // match ends by time-up, the winner is derived from the final score, falling back
+        // to total kills, and a full tie is reported as a draw.
+        BattlefieldEndingReason endReason;
+        if (_victoryScoreReached)
+        {
+            // The winning corps was flagged in AddScore(); the opponent is the loser
+            if (_corps1Result.State == VictoryState.Win)
+                _corps2Result.State = VictoryState.Lose;
+            else if (_corps2Result.State == VictoryState.Win)
+                _corps1Result.State = VictoryState.Lose;
+            endReason = BattlefieldEndingReason.AchievementScore;
+        }
+        else
+        {
+            // Time-up: derive the outcome from the final score, falling back to total kills
+            endReason = InstantGameResultRules.DeriveTimeOver(_corps1Result, _corps2Result);
+        }
+
+        BroadcastPacket(new SCInstantGameEndPacket(_zoneInstanceId, endReason,
             _corps1Result,
             _corps2Result));
+
+        // Fix #1323: pay out honor points so arena matches feed the PvP progression loop
+        // (honor is persisted with the character's regular save).
+        AwardMatchHonor();
 
         // Restore real factions right away so nameplates are correct during the results screen
         foreach (var character in _players.ToList())
             RestoreOriginalFaction(character);
+    }
+
+    /// <summary>
+    /// Pays honor points to every participant of the finished match: winners receive
+    /// GladiatorWinHonor, losers and draws receive GladiatorLossHonor. The payout is
+    /// also written into each member's Bonus field so it shows up on the results screen.
+    /// </summary>
+    private void AwardMatchHonor()
+    {
+        var winHonor = AppConfiguration.Instance.World.GladiatorWinHonor;
+        var lossHonor = AppConfiguration.Instance.World.GladiatorLossHonor;
+        foreach (var corpsResult in new[] { _corps1Result, _corps2Result })
+        {
+            var honor = corpsResult.State == VictoryState.Win ? winHonor : lossHonor;
+            if (honor <= 0)
+                continue;
+            foreach (var member in corpsResult.Members)
+            {
+                if (member.Character == null)
+                    continue;
+                member.Bonus = honor;
+                member.Character.ChangeGamePoints(GamePointKind.Honor, honor);
+            }
+        }
     }
 
     private void DestroyInstantGame()

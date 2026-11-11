@@ -29,6 +29,8 @@
         "PvpHonorRate": 1.0,
         "TagShareEnabled": false,
         "GladiatorKillScore": 30,
-        "GladiatorAssistScore": 15
+        "GladiatorAssistScore": 15,
+        "GladiatorWinHonor": 50,
+        "GladiatorLossHonor": 10
     }
 }

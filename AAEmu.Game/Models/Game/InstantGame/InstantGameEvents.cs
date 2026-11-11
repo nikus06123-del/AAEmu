@@ -16,15 +16,20 @@ public partial class InstantGame
     private bool AddScore(InstantCorps corps, InstantGameTeamMember scorer, int score)
     {
         var result = corps == InstantCorps.Corps1 ? _corps1Result : _corps2Result;
+        var opposingResult = corps == InstantCorps.Corps1 ? _corps2Result : _corps1Result;
 
         scorer.Score += score;
 
-        // Fix #1323: broadcast the actual corps that scored instead of always Corps1
-        BroadcastPacket(new SCInstantGameAddPointPacket(_zoneInstanceId, corps, score, result.Score, 0, scorer.Character.Name));
+        // Fix #1323: broadcast the actual corps that scored instead of always Corps1, and
+        // include the opposing corps' score so both scoreboard values update on the client.
+        BroadcastPacket(new SCInstantGameAddPointPacket(_zoneInstanceId, corps, score, result.Score, opposingResult.Score, scorer.Character.Name));
 
         if (result.Score >= _battlefield.RuleSet.VictoryScore)
         {
             result.State = VictoryState.Win;
+            // Fix #1323: remember that the match ended through the victory score so
+            // SendResult() knows the outcome is already decided.
+            _victoryScoreReached = true;
             _endGameTokenSource.Cancel();
             // Fix #1323: EndGame() is an async method; calling .Start() on the hot-path task
             // throws InvalidOperationException ("Start may not be called on a promise-style task"),
@@ -53,6 +58,28 @@ public partial class InstantGame
 
         BroadcastPacket(new SCInstantGameKillPacket(_zoneInstanceId, killer, victim, _characterCorps[killer], _characterCorps[victim], (sbyte)memberKiller.Killstreak, memberKiller.Corps.TotalKills, memberVictim.Corps.TotalKills));
         killer.SendPacket(new SCInstantGameKillstreakPacket(_zoneInstanceId, (sbyte)memberKiller.Killstreak, 0, true));
+
+        // Fix #1323: credit assist contributors (recent damage, heals on the killer, CC on the
+        // victim) and pay the configurable assist score. Previously GladiatorAssistScore was
+        // dead config and the Assists column on the results screen always stayed at 0.
+        // CollectAssists() is still valid here - Unit.DoDie fires OnKill before the victim's
+        // damage history is cleared.
+        var assistScore = AppConfiguration.Instance.World.GladiatorAssistScore;
+        if (assistScore > 0)
+        {
+            var assisterIds = victim.CollectAssists(killer);
+            foreach (var member in _members.Values)
+            {
+                if (member.Character == null || member.Character.Id == killer.Id)
+                    continue;
+                if (!assisterIds.Contains(member.Character.Id))
+                    continue;
+                member.Assists++;
+                member.Score += assistScore;
+                BroadcastPacket(new SCInstantGameAddPointPacket(_zoneInstanceId, _characterCorps[member.Character], assistScore, member.Corps.Score, 0, member.Character.Name));
+            }
+        }
+
         // Kill score reward is configurable via World.json (GladiatorKillScore)
         var isMatchOver = AddScore(_characterCorps[killer], memberKiller, AppConfiguration.Instance.World.GladiatorKillScore);
 
