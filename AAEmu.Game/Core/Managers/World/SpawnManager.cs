@@ -182,6 +182,20 @@ public class SpawnManager(WorldInstance parentWorld)
     public int DeSpawnAll()
     {
         var res = 0;
+        // Upstream issue #1168: drop trade packs still loaded on vehicles before the
+        // teardown below deletes their cargo doodads (whose Delete() destroys the
+        // referenced System-container items), so shutdown/restart no longer makes
+        // loaded packs silently vanish.
+        foreach (var slave in World.GetAllSlaves().ToList())
+            try
+            {
+                slave.DropAttachedTradePacks();
+            }
+            catch
+            {
+                //
+            }
+
         // NPCs
         foreach (var npc in World.GetAllNpcs().ToList())
             try

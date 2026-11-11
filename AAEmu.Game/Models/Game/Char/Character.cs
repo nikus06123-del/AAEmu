@@ -2156,7 +2156,9 @@ public partial class Character : Unit, ICharacter
                 Thread.Sleep(TimeSpan.FromMilliseconds(timeToDespawn)); // 10 minutes
                 if (token.IsCancellationRequested)
                     return;
-                ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(this);
+                // Upstream issue #1168: this is the post-disconnect cleanup, so a loaded
+                // trade pack must be dropped as free loot instead of blocking the despawn.
+                ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(this, false, true);
             }, token);
             mySlave.LeaveTask.Start();
         }

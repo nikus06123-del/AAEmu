@@ -180,7 +180,10 @@ public class EnterWorldManager(
 
                 // Despawn and unmount everybody from owned Mates
                 activeChar.ParentWorld.MateManager.RemoveAndDespawnAllActiveOwnedMates(activeChar);
-                activeChar.ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(activeChar);
+                // dropPacksOnRefusal (#1168): a logout is not a player-initiated un-summon,
+                // so loaded trade packs get dropped as free loot instead of blocking the
+                // vehicle despawn.
+                activeChar.ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(activeChar, false, true);
                 DoodadManager.Instance.CloseCoffersOpenedBy(activeChar);
 
                 // Check if still mounted on somebody else's mount and dismount that if needed

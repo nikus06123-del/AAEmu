@@ -1073,13 +1073,22 @@ public class SlaveManager(WorldInstance parentWorldInstance)
     /// </summary>
     /// <param name="owner"></param>
     /// <param name="forceDelete">If true, will force delete attached items</param>
-    public void RemoveAndDespawnAllActiveOwnedSlaves(Character owner, bool forceDelete)
+    /// <param name="dropPacksOnRefusal">If true (non player-initiated cleanups), drops trade packs as free loot when the vehicle refuses to despawn because it is still holding one, instead of leaving the loaded vehicle in the world (upstream issue #1168)</param>
+    public void RemoveAndDespawnAllActiveOwnedSlaves(Character owner, bool forceDelete, bool dropPacksOnRefusal = false)
     {
         var activeSlaveInfo = GetActiveSlaveByOwnerObjId(owner.ObjId);
         if (activeSlaveInfo != null)
         {
             activeSlaveInfo.Save();
-            Delete(owner, activeSlaveInfo.ObjId, forceDelete);
+            if (!Delete(owner, activeSlaveInfo.ObjId, forceDelete) && dropPacksOnRefusal)
+            {
+                // Offline cleanup (logout / disconnect timer): the refusal came from the
+                // live trade pack guard, so drop the packs as free loot and despawn the
+                // vehicle - matching the official behavior of ships losing their cargo
+                // when the owner leaves.
+                activeSlaveInfo.DropAttachedTradePacks();
+                Delete(owner, activeSlaveInfo.ObjId, true);
+            }
         }
 
         ClearSlaveAttachmentState(owner);
