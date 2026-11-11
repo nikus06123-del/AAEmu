@@ -235,6 +235,16 @@ public class SphereQuestManager(WorldInstance parent) : ISphereQuestManager
         return _sphereQuests.GetValueOrDefault(componentId);
     }
 
+    /// <summary>
+    /// Static accessor for the physical quest spheres keyed by quest component id.
+    /// Used by SphereGameData to bypass a potentially wrong sphere_quests.quest_id
+    /// link when validating skill-use inside a quest area (upstream issue #1329).
+    /// </summary>
+    public static List<SphereQuest> GetQuestSpheresByComponent(uint componentId)
+    {
+        return _sphereQuests?.GetValueOrDefault(componentId);
+    }
+
     public List<SphereQuestTrigger> GetSphereQuestTriggers()
     {
         return _sphereQuestTriggers;

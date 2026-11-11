@@ -10,6 +10,8 @@ using AAEmu.Game.Models.Game.World;
 using AAEmu.Game.Models.Spheres;
 using AAEmu.Game.Utils.DB;
 
+using NLog;
+
 using Microsoft.Data.Sqlite;
 using Jitter2.LinearMath;
 
@@ -18,6 +20,8 @@ namespace AAEmu.Game.GameData;
 [GameData]
 public class SphereGameData : Singleton<SphereGameData>, IGameDataLoader
 {
+    private static Logger Logger { get; } = LogManager.GetCurrentClassLogger();
+
     private Dictionary<uint, Spheres> _spheres;
     private Dictionary<uint, SphereQuests> _sphereQuests;
     private Dictionary<uint, SphereSkills> _sphereSkills;
@@ -309,7 +313,33 @@ public class SphereGameData : Singleton<SphereGameData>, IGameDataLoader
 
     public void PostLoad()
     {
-        // Do nothing
+        // Upstream issue #1329: surface broken sphere -> sphere_quest -> quest links at
+        // startup instead of failing silently inside skill-use checks later. A known
+        // example is sphere 1448 (quest 3889 "Closing the Gate"), whose sphere_quests
+        // row pointed at unrelated quest 4280; data fixes for these live in
+        // SQL/patches/compact.
+        var brokenLinks = 0;
+        foreach (var sphere in _spheres.Values)
+        {
+            if (sphere.SphereDetailType != "SphereQuest")
+                continue;
+
+            if (!_sphereQuests.TryGetValue(sphere.SphereDetailId, out var sphereQuest))
+            {
+                brokenLinks++;
+                Logger.Warn("Sphere {0} references missing sphere_quest {1}", sphere.Id, sphere.SphereDetailId);
+                continue;
+            }
+
+            if (QuestManager.Instance.GetTemplate(sphereQuest.QuestId) == null)
+            {
+                brokenLinks++;
+                Logger.Warn("Sphere {0} -> sphere_quest {1} points to non-existent quest {2}, area checks for it will always fail", sphere.Id, sphere.SphereDetailId, sphereQuest.QuestId);
+            }
+        }
+
+        if (brokenLinks > 0)
+            Logger.Warn("Found {0} broken sphere/sphere_quest/quest links, see warnings above", brokenLinks);
     }
 
     public uint GetSphereIdFromQuest(uint questId)
@@ -350,6 +380,20 @@ public class SphereGameData : Singleton<SphereGameData>, IGameDataLoader
             return null;
 
         var pakDataSpheres = SphereQuestManager.GetSpheresForQuest(dbSphereQuest.QuestId);
+
+        // Upstream issue #1329: when the quest component is known, prefer the physical
+        // spheres keyed by component id. The sphere_quests.quest_id link in the client
+        // data is sometimes wrong (e.g. sphere 1448 of quest 3889 pointing at unrelated
+        // quest 4280), which made the skill-use check fail even while standing inside
+        // the correct sphere. Component ids are unique per quest component, so this
+        // fallback cannot leak spheres belonging to other quests.
+        if (requiredComponentId > 0)
+        {
+            var spheresByComponent = SphereQuestManager.GetQuestSpheresByComponent(requiredComponentId);
+            if (spheresByComponent is { Count: > 0 })
+                pakDataSpheres = spheresByComponent;
+        }
+
         var requiredComponent = requiredComponentId > 0
             ? QuestManager.Instance.GetComponent(requiredComponentId)
             : null;
