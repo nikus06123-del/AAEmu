@@ -230,6 +230,14 @@ public class GameConnection
 
         // Do a manual save here as it's no longer in _characters at this point
         // TODO: might need a better option like saving this transaction for later to be used by the SaveManager
-        activeChar.SaveDirectlyToDatabase();
+        // Upstream issue #985: a silently failed final save leaves the character row at
+        // its last autosave state (e.g. level 1 after an early session), which the
+        // character selection screen then displays. Retry once before giving up.
+        if (!activeChar.SaveDirectlyToDatabase())
+        {
+            Logger.Warn($"Final save failed for character {activeChar.Id} - {activeChar.Name}, retrying once ...");
+            if (!activeChar.SaveDirectlyToDatabase())
+                Logger.Error($"Final save failed twice for character {activeChar.Id} - {activeChar.Name}, character data may be stale");
+        }
     }
 }

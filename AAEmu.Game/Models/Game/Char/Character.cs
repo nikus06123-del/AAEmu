@@ -1461,6 +1461,11 @@ public partial class Character : Unit, ICharacter
         {
             Expedition?.OnCharacterRefresh(this);
             BroadcastPacket(new SCLevelChangedPacket(ObjId, Level), true);
+            // Persist the new level immediately (upstream issue #985). Level-ups are
+            // otherwise only stored by the periodic autosave (5 minutes) or the final
+            // save on logout, so a quick exit to the character selection screen right
+            // after leveling up would show the stale old level in the character list.
+            Task.Run(SaveDirectlyToDatabase);
         }
 
         //Quests.OnLevelUp(); // TODO added for quest Id=5967
@@ -2600,7 +2605,13 @@ public partial class Character : Unit, ICharacter
                 try
                 {
                     saved = Save(sqlConnection, transaction);
-                    transaction.Commit();
+                    // Only commit when the Save() itself reports success (upstream issue
+                    // #985): committing a half-written transaction would silently leave
+                    // the character row at stale values (e.g. an old level).
+                    if (saved)
+                        transaction.Commit();
+                    else
+                        transaction.Rollback();
                 }
                 catch (Exception e)
                 {

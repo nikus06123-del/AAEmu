@@ -129,10 +129,14 @@ public class EnterWorldManager(
 
                     connection.CancelTokenSource = new CancellationTokenSource();
                     var token = connection.CancelTokenSource.Token;
+                    // Capture the character at scheduling time (upstream issue #985):
+                    // reading connection.ActiveChar at task execution time could yield
+                    // null (inactivity check / GM disconnect), skipping the save entirely.
+                    var characterAtLeave = connection.ActiveChar;
                     connection.LeaveTask = Task.Run(async () =>
                     {
                         await Task.Delay(logoutTime, token);
-                        Instance.LeaveWorldTask(connection, leaveWorldTargetType, connection.ActiveChar);
+                        Instance.LeaveWorldTask(connection, leaveWorldTargetType, characterAtLeave);
                     }, token);
                 }
 
@@ -163,68 +167,81 @@ public class EnterWorldManager(
     /// <param name="activeChar"></param>
     public void LeaveWorldTask(GameConnection connection, LeaveWorldTargetType leaveWorldTarget, Character activeChar)
     {
-        if (activeChar != null)
+        try
         {
-            activeChar.DisabledSetPosition = true;
-            activeChar.IsOnline = false;
-            activeChar.LeaveTime = DateTime.UtcNow;
+            if (activeChar != null)
+            {
+                activeChar.DisabledSetPosition = true;
+                activeChar.IsOnline = false;
+                activeChar.LeaveTime = DateTime.UtcNow;
 
-            // Remove all remaining quest timer tasks
-            questManager.RemoveQuestTimer(activeChar.Id, 0);
+                // Remove all remaining quest timer tasks
+                questManager.RemoveQuestTimer(activeChar.Id, 0);
 
-            // Despawn and unmount everybody from owned Mates
-            activeChar.ParentWorld.MateManager.RemoveAndDespawnAllActiveOwnedMates(activeChar);
-            activeChar.ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(activeChar);
-            DoodadManager.Instance.CloseCoffersOpenedBy(activeChar);
+                // Despawn and unmount everybody from owned Mates
+                activeChar.ParentWorld.MateManager.RemoveAndDespawnAllActiveOwnedMates(activeChar);
+                activeChar.ParentWorld.SlaveManager.RemoveAndDespawnAllActiveOwnedSlaves(activeChar);
+                DoodadManager.Instance.CloseCoffersOpenedBy(activeChar);
 
-            // Check if still mounted on somebody else's mount and dismount that if needed
-            activeChar.ForceDismount(/*AttachUnitReason.PrefabChanged*/); // Dismounting a mount because of unsummoning sends "10" for this
+                // Check if still mounted on somebody else's mount and dismount that if needed
+                activeChar.ForceDismount(/*AttachUnitReason.PrefabChanged*/); // Dismounting a mount because of unsummoning sends "10" for this
 
-            // NOTE: do NOT MemberRemoveFromTeam here. Setting IsOnline = false above
-            // already routed through TeamManager.SetOffline, which broadcasts
-            // SCTeamMemberDisconnectedPacket so team-mates see the player as offline
-            // while the TeamMember entry stays in Team.Members[] for a clean reconnect
-            // via UpdateAtLogin. Calling MemberRemoveFromTeam here used to immediately
-            // overwrite the offline indicator with a "left the team" broadcast and
-            // wipe the slot — which is what made every disconnect look like a kick.
+                // NOTE: do NOT MemberRemoveFromTeam here. Setting IsOnline = false above
+                // already routed through TeamManager.SetOffline, which broadcasts
+                // SCTeamMemberDisconnectedPacket so team-mates see the player as offline
+                // while the TeamMember entry stays in Team.Members[] for a clean reconnect
+                // via UpdateAtLogin. Calling MemberRemoveFromTeam here used to immediately
+                // overwrite the offline indicator with a "left the team" broadcast and
+                // wipe the slot — which is what made every disconnect look like a kick.
 
-            // Remove from all Chat
-            chatManager.LeaveAllChannels(activeChar);
+                // Remove from all Chat
+                chatManager.LeaveAllChannels(activeChar);
 
-            // Handle Family
-            if (activeChar.Family > 0)
-                familyManager.OnCharacterLogout(activeChar);
+                // Handle Family
+                if (activeChar.Family > 0)
+                    familyManager.OnCharacterLogout(activeChar);
 
-            // Handle Guild
-            activeChar.Expedition?.OnCharacterLogout(activeChar);
+                // Handle Guild
+                activeChar.Expedition?.OnCharacterLogout(activeChar);
 
-            // Remove player from world (hides and release Id)
-            activeChar.Delete();
-            // ObjectIdManager.Instance.ReleaseId(activeChar.ObjId);
+                // Remove player from world (hides and release Id)
+                activeChar.Delete();
+                // ObjectIdManager.Instance.ReleaseId(activeChar.ObjId);
 
-            // Cancel auto-regen
-            //activeChar.StopRegen();
+                // Cancel auto-regen
+                //activeChar.StopRegen();
 
-            // Clear Buyback table
-            activeChar.BuyBackItems.Wipe();
+                // Clear Buyback table
+                activeChar.BuyBackItems.Wipe();
 
-            // Remove subscribers
-            foreach (var subscriber in activeChar.Subscribers)
-                subscriber.Dispose();
+                // Remove subscribers
+                foreach (var subscriber in activeChar.Subscribers)
+                    subscriber.Dispose();
 
-            // Remove from server
-            worldManager.TryRemoveCharacter(activeChar.ObjId);
+                // Remove from server
+                worldManager.TryRemoveCharacter(activeChar.ObjId);
+            }
         }
-
-        GameConnection.SaveAndRemoveFromWorld(activeChar);
-
-        // connection isn't set if we are removing an orphaned Character object
-        if (connection != null)
+        catch (Exception e)
         {
-            connection.State = GameState.Lobby;
-            connection.LeaveTask = null;
-            connection.SendPacket(new SCLeaveWorldGrantedPacket(leaveWorldTarget));
-            connection.SendPacket(new ChangeStatePacket(0));
+            // Never let a teardown failure skip the final save (upstream issue #985):
+            // an unhandled exception here used to fault the LeaveTask silently, which
+            // left the character unsaved, still registered in the world, and stuck in
+            // the "World" connection state without a granted leave packet.
+            Logger.Error(e, $"LeaveWorldTask: teardown failed for character {activeChar?.Name ?? "unknown"} ({activeChar?.Id ?? 0})");
+        }
+        finally
+        {
+            GameConnection.SaveAndRemoveFromWorld(activeChar);
+
+            // connection isn't set if we are removing an orphaned Character object
+            if (connection != null)
+            {
+                connection.State = GameState.Lobby;
+                connection.LeaveTask = null;
+                connection.SendPacket(new SCLeaveWorldGrantedPacket(leaveWorldTarget));
+                connection.SendPacket(new ChangeStatePacket(0));
+            }
         }
     }
 }
