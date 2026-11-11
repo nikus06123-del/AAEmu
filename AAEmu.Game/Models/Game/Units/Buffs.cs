@@ -457,6 +457,11 @@ public class Buffs : IBuffs
                 buff.Triggers.SubscribeEvents();
                 buff.Events.OnBuffStarted(buff, new OnBuffStartedArgs());
 
+                // Issue #1256: data-driven NPC reactions to buffs (e.g. quest 3706 - a
+                // Lazy Guard kicked awake with buff 2802 walks back to Royster's Camp);
+                // mappings live in Data/npc_buff_paths.json
+                AiBuffPathManager.Instance.HandleBuffApplied(owner, buff);
+
                 if (buff.Template.BuffId > 0)
                 {
                     var buffTemplate = SkillManager.Instance.GetBuffTemplate(buff.Template.BuffId);

@@ -1,0 +1,8 @@
+[
+    {
+        "Comment": "Quest 3706 'Proper Motivational Technique' (issue #1256): kicking a Lazy Guard (707) awake applies buff 2802 'Awakening'; the guard then walks back to Petty Officer Alberton (10013) at Royster's Camp. Path file contains absolute world coordinates.",
+        "NpcTemplateId": 707,
+        "BuffId": 2802,
+        "PathFile": "q3706_roysters_camp"
+    }
+]
