@@ -300,9 +300,15 @@ public class CharacterMails
         if (MailManager.Instance._allPlayerMails.TryGetValue(id, out var thisMail))
         {
             var itemSlots = new List<(SlotType slotType, byte slot)>();
-            for (var i = 0; i < MailBody.MaxMailAttachments; i++)
+            // Fix: iterate over the actual attachment list instead of blindly looping up to
+            // MaxMailAttachments. The old code indexed 10 entries over a list that is usually
+            // much shorter (0-2 items) and threw ArgumentOutOfRangeException on every client
+            // "return to sender" request.
+            for (var i = 0; i < thisMail.Body.Attachments.Count && i < MailBody.MaxMailAttachments; i++)
             {
-                var item = ItemManager.Instance.GetItemByItemId(thisMail.Body.Attachments[i].Id);
+                var item = thisMail.Body.Attachments[i];
+                if (item == null)
+                    continue;
                 itemSlots.Add(item.SlotType == SlotType.None
                     ? ((SlotType slotType, byte slot))(0, 0)
                     : (item.SlotType, (byte)item.Slot));

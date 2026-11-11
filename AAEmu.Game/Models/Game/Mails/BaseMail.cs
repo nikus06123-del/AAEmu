@@ -50,7 +50,10 @@ public class BaseMail
     /// <returns></returns>
     public bool CanReturnMail()
     {
-        return IsDelivered == false && Header.SenderId != Header.ReceiverId && Header.SenderId > 0 && (MailType == MailType.Normal || MailType == MailType.Express);
+        // Fix #974: a mail that was already returned once must never be returned again,
+        // otherwise it would ping-pong between the original sender and receiver every
+        // time another character (or even the same one) triggers a mail return pass.
+        return IsDelivered == false && Header.Returned == false && Header.SenderId != Header.ReceiverId && Header.SenderId > 0 && (MailType == MailType.Normal || MailType == MailType.Express);
     }
 
     public bool ReturnToSender()
@@ -71,12 +74,21 @@ public class BaseMail
         Header.SenderId = originalReceiverId;
         Header.SenderName = originalReceiverName;
 
+        // Fix #974: persist the returned state properly. Previously Header.Returned was
+        // never set, the mail kept its old status/timestamps (so it did not look like a
+        // fresh mail in the sender's inbox), and MailManager.Send() threw for a mail Id
+        // that was already registered - leaving the sender/receiver swap half-applied.
+        Header.Returned = true;
+        Header.Status = MailStatus.Unread;
+        Body.RecvDate = DateTime.UtcNow;
+        IsDelivered = false;
+        IsDirty = true;
+
         Send();
 
         if (originalSender != null && originalSender.IsOnline)
             MailManager.Instance.NotifyNewMailByNameIfOnline(this, originalSender.Name);
 
-        // TODO
         return true;
     }
 

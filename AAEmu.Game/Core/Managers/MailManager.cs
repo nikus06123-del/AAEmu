@@ -75,7 +75,13 @@ public class MailManager(IMailIdManager mailIdManager, INameManager nameManager,
             Logger.Trace("Send() - Assign new mail Id");
             mail.Id = GetNewMailId();
         }
-        _allPlayerMails.Add(mail.Id, mail);
+        // Fix #974: use the indexer instead of Add() so that re-sending a mail that is
+        // still registered under the same Id (e.g. a mail being returned to its sender)
+        // updates the entry instead of throwing ArgumentException and aborting whatever
+        // operation triggered the return (character deletion, mail list refresh, ...).
+        if (_allPlayerMails.TryGetValue(mail.Id, out var existingMail) && !ReferenceEquals(existingMail, mail))
+            Logger.Warn("Send() - mail Id {0} is already registered by a different mail object, overwriting it", mail.Id);
+        _allPlayerMails[mail.Id] = mail;
         NotifyNewMailByNameIfOnline(mail, targetName);
         return true;
     }

@@ -658,8 +658,14 @@ public class CharacterManager(
 
         // Return all mails to sender (if needed)
         // The main reason we do this is so other people's items wouldn't get delete if fullWipe is enabled
+        // Fix #974: only consider mails that were actually addressed TO the character being deleted.
+        // CanReturnMail() is true for every undelivered Normal/Express mail on the server (any mail
+        // still in transit to an offline player), so the old unfiltered loop flipped *other players'*
+        // in-transit mail back to its sender whenever any character got deleted.
         foreach (var (mailId, mail) in mailManager.AllPlayerMails)
         {
+            if (mail.Header.ReceiverId != character.Id)
+                continue;
             if (mail.CanReturnMail() && !mail.ReturnToSender())
                 Logger.Warn(
                     "DeleteCharacterAssets - Unable to return mail to sender for mail: {0}, deleted char: {1}({2}), sender: {3}({4})",
