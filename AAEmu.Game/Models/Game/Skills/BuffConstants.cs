@@ -26,6 +26,7 @@ public enum BuffConstants : uint
     Retribution = 2167,
     RemovalDebuff = 2250, // for houses
     LoggedOn = 2423, // player is logging in
+    ArenaStandby = 131, // invulnerable while waiting in an arena before the match starts
     Dash = 2675,
     ForciblyAwaitingTrial = 3619,
     Jury = 3621,

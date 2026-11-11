@@ -4,6 +4,7 @@ using AAEmu.Game.Core.Network.Game;
 using AAEmu.Game.Core.Packets.G2C;
 using AAEmu.Game.Models.Game.Char;
 using AAEmu.Game.Models.Game.InstantGame.Static;
+using AAEmu.Game.Models.Game.Skills;
 using AAEmu.Game.Models.Game.World;
 using AAEmu.Game.Models.Game.World.Transform;
 using AAEmu.Game.Models.StaticValues;
@@ -30,6 +31,12 @@ public partial class InstantGame
     private readonly ZoneInstanceId _zoneInstanceId;
 
     private readonly CancellationTokenSource _endGameTokenSource;
+
+    // Fix #1323: exact faction each player had before entering the arena.
+    // SetFaction() overwrites OriginFaction on every call, so restoring from it can
+    // return players into Red/Blue corps factions instead of their real one
+    // (Pirates, Nations, custom factions...). The snapshot avoids that entirely.
+    private readonly Dictionary<Character, FactionsEnum> _preArenaFactions = [];
 
     public InstantGame(Battlefield battlefield)
     {
@@ -88,6 +95,7 @@ public partial class InstantGame
             charsInCorps2.Remove(character);
 
         _characterCorps.Remove(character);
+        _preArenaFactions.Remove(character);
         character.CurrentInstantGame = null;
         return true;
     }
@@ -133,12 +141,19 @@ public partial class InstantGame
         var corps = _characterCorps[character];
         character.SendPacket(new SCInstantGameJoinedPacket(_zoneInstanceId, corps, _battlefield.RuleSet));
 
+        // Save their exact current faction (supports Pirates, Nations, etc.) before switching to Red/Blue
+        if (!_preArenaFactions.ContainsKey(character))
+            _preArenaFactions[character] = character.Faction.Id;
+
         if (corps == InstantCorps.Corps1)
             character.SetFaction((FactionsEnum)_battlefield.RuleSet.Corps1FactionId);
         else
             character.SetFaction((FactionsEnum)_battlefield.RuleSet.Corps2FactionId);
 
         character.Events.OnKill += OnKill;
+
+        // Give the Arena Standby buff so players don't take fall damage while waiting for the match to start
+        character.Buffs.AddBuff((uint)BuffConstants.ArenaStandby, character);
 
         var member = new InstantGameTeamMember { Character = character };
         _members.Add(character, member);
@@ -171,14 +186,24 @@ public partial class InstantGame
                 }
 
                 // Reset HP and MP
-                // Reset HP
                 character.Hp = character.MaxHp;
                 character.Mp = character.MaxMp;
                 character.BroadcastPacket(new SCUnitPointsPacket(character.ObjId, character.Hp, character.Mp), true);
-                // Reset Buffs
+                // Reset Buffs, then give the Standby buff again for the remaining countdown
                 character.Buffs.RemoveAllEffects();
+                character.Buffs.AddBuff((uint)BuffConstants.ArenaStandby, character);
                 // Reset Cooldowns
                 character.ResetAllSkillCooldowns(false);
+            }
+
+            // Wait the remaining 17 seconds (3s + 17s = 20s total countdown), then drop the Standby buff so the fight can begin
+            await Task.Delay(17000);
+            foreach (var (character, _) in _characterCorps)
+            {
+                if (character == null)
+                    continue;
+
+                character.Buffs.RemoveAllEffects();
             }
         });
         Task.Run(async () =>
@@ -195,11 +220,51 @@ public partial class InstantGame
         DestroyInstantGame();
     }
 
+    /// <summary>
+    /// Restores the faction a player had before entering the arena, with multiple fallbacks
+    /// in case the snapshot is missing or the saved data was already corrupted.
+    /// </summary>
+    private void RestoreOriginalFaction(Character character)
+    {
+        if (character == null)
+            return;
+
+        // 1. Pull the exact faction they had right before entering the arena
+        var restoreFactionId = FactionsEnum.Invalid;
+        if (!_preArenaFactions.TryGetValue(character, out restoreFactionId) ||
+            (uint)restoreFactionId == _battlefield.RuleSet.Corps1FactionId ||
+            (uint)restoreFactionId == _battlefield.RuleSet.Corps2FactionId)
+        {
+            // 2. Fallback to OriginFaction if the snapshot was missing or already a corps faction
+            restoreFactionId = character.OriginFaction.Id;
+        }
+
+        // 3. Last resort: if even OriginFaction got corrupted to a corps faction, derive it from race
+        if ((uint)restoreFactionId == _battlefield.RuleSet.Corps1FactionId ||
+            (uint)restoreFactionId == _battlefield.RuleSet.Corps2FactionId)
+        {
+            restoreFactionId = (byte)character.Race switch
+            {
+                1 => FactionsEnum.Nuian,
+                4 => FactionsEnum.Elf,
+                5 => FactionsEnum.Harani,
+                6 => FactionsEnum.Firran,
+                _ => FactionsEnum.Nuian
+            };
+        }
+
+        character.SetFaction(restoreFactionId);
+    }
+
     private void SendResult()
     {
         BroadcastPacket(new SCInstantGameEndPacket(_zoneInstanceId, BattlefieldEndingReason.AchievementScore,
             _corps1Result,
             _corps2Result));
+
+        // Restore real factions right away so nameplates are correct during the results screen
+        foreach (var character in _players.ToList())
+            RestoreOriginalFaction(character);
     }
 
     private void DestroyInstantGame()
@@ -218,8 +283,10 @@ public partial class InstantGame
     {
         // Warning: Null exception exists if player does not exist in the world when this is ran (Most likely from disconnecting or character select)
 
+        // Fix #1323: restore the pre-arena faction instead of OriginFaction,
+        // which may already have been overwritten by repeated SetFaction() calls
+        RestoreOriginalFaction(character);
         RemovePlayer(character);
-        character.SetFaction(character.OriginFaction.Id);
         character.Events.OnKill -= OnKill;
         character.DisabledSetPosition = true;
 

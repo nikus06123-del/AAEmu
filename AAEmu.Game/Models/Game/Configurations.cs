@@ -195,6 +195,16 @@ public class WorldConfig
     /// Level at which a player starts losing exp and durability on death
     /// </summary>
     public int MinimumExpLossLevel { get; set; } = 10;
+
+    /// <summary>
+    /// Score awarded to a Gladiator arena team for each kill
+    /// </summary>
+    public int GladiatorKillScore { get; set; } = 30;
+
+    /// <summary>
+    /// Score awarded to a Gladiator arena team for each assist
+    /// </summary>
+    public int GladiatorAssistScore { get; set; } = 15;
 }
 
 public class DungeonLoadConfig
