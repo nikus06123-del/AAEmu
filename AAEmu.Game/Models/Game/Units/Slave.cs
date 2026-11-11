@@ -38,6 +38,37 @@ public class Slave : Unit
     public Character Summoner { get; set; }
     public BaseUnitType OwnerType { get; init; }
 
+    /// <summary>
+    /// Fix #1091: vehicles with cargo (carts, haulers, merchant ships) previously had no
+    /// interaction permissions at all, which - combined with the broken DbId lookup in
+    /// DoodadFuncRecoverItem - allowed anyone to take trade packs off somebody else's
+    /// vehicle. The summoner, characters on the same account and family members are allowed;
+    /// everybody else is refused.
+    /// </summary>
+    public override bool AllowedToInteract(Character character)
+    {
+        if (character == null || Summoner == null)
+            return base.AllowedToInteract(character);
+
+        if (character.Id == Summoner.Id)
+            return base.AllowedToInteract(character);
+
+        // Same account as the summoner
+        if (NameManager.Instance.GetCharacterAccount(Summoner.Id) is var ownerAccount && ownerAccount > 0 &&
+            character.AccountId == ownerAccount)
+            return base.AllowedToInteract(character);
+
+        // Family members of the summoner
+        if (Summoner.Family > 0 && character.Family == Summoner.Family)
+        {
+            var family = FamilyManager.Instance.GetFamily(Summoner.Family);
+            if (family != null && family.Members.Any(m => m.Id == Summoner.Id))
+                return base.AllowedToInteract(character);
+        }
+
+        return false;
+    }
+
     public Item SummoningItem { get; init; }
     public List<Doodad> AttachedDoodads { get; set; }
     public List<Slave> AttachedSlaves { get; set; }
@@ -854,78 +885,139 @@ public class Slave : Unit
     {
         foreach (var doodad in AttachedDoodads)
         {
-            // Check if the doodad held an item
-            if (doodad.ItemId <= 0)
-                continue;
-
-            var droppedItem = ItemManager.Instance.GetItemByItemId(doodad.ItemId);
-            // If the held item is a backpack, drop it to the floor
-            if (droppedItem is not Backpack backpackItem)
-                continue;
-
-            // Drop Backpack to the floor (spawn doodad)
-            var putDownSkill = SkillManager.Instance.GetSkillTemplate(backpackItem.Template.UseSkillId);
-            foreach (var skillEffect in putDownSkill.Effects)
+            try
             {
-                if (skillEffect.Template is not PutDownBackpackEffect putDownBackpackEffectTemplate)
-                    continue;
-
-                var newDoodadId = putDownBackpackEffectTemplate.BackpackDoodadId;
-
-                // Create the Doodad at location on the floor if it's close to it
-                var newDoodad = DoodadManager.Instance.Create(ParentWorld, 0, newDoodadId, null, true);
-                if (newDoodad == null)
-                {
-                    Logger.Warn($"Dropped Doodad {newDoodadId}, from BackpackDoodadId could not be created");
-                    break;
-                }
-                newDoodad.IsPersistent = true;
-                newDoodad.Transform = doodad.Transform.CloneDetached();
-                // Add a bit of randomness to the dropped doodad
-                newDoodad.Transform.Local.Translate(
-                    Random.Shared.NextSingle() * 2f - 1f,
-                    Random.Shared.NextSingle() * 2f - 1f,
-                    0f);
-                newDoodad.AttachPoint = AttachPointKind.None;
-                newDoodad.ItemId = droppedItem.Id;
-                newDoodad.ItemTemplateId = droppedItem.TemplateId;
-                newDoodad.UccId = droppedItem.UccId; // Not sure if it's needed, but let's copy the Ucc for completeness' sake
-                newDoodad.SetScale(1f);
-                newDoodad.PlantTime = DateTime.UtcNow;
-                newDoodad.Faction = FactionManager.Instance.GetFaction(FactionsEnum.Friendly);
-
-                var floor = ParentWorld.Template.Floor.GetFloor(newDoodad.Transform.World.Position.X, newDoodad.Transform.World.Position.Y, newDoodad.Transform.World.Position.Z, FloorContext.Spawn);
-                var surface = WorldManager.Instance.GetWorld(doodad.Transform.InstanceId)?.Water?.GetWaterSurface(newDoodad.Transform.World.Position, out _) ?? 0f;
-                var depth = surface - floor;
-
-                // It seems that when the water is deep, drops to the water surface, otherwise, it sinks to the floor
-                // Requires more testing, possibly a server setting?
-                newDoodad.Transform.Local.SetHeight(depth < 30f ? floor : Math.Max(floor, surface));
-
-                // Save new doodad
-                newDoodad.InitDoodad();
-                newDoodad.Spawn();
-                newDoodad.Save();
-
-                // Remove data from trade pack slot
-                doodad.ItemTemplateId = 0;
-                doodad.ItemId = 0;
-
-                // Hacky way to force move to next phase to reset doodad to default before saving
-                var funcs = DoodadManager.Instance.GetDoodadFuncs(doodad.FuncGroupId);
-                foreach (var phaseFunc in funcs)
-                {
-                    if (phaseFunc.FuncType == "DoodadFuncRecoverItem")
-                    {
-                        doodad.DoChangePhase(null, phaseFunc.NextPhase);
-                        break;
-                    }
-                }
-
-                // Save new empty data
-                doodad.Save();
+                DropTradePackFromDoodad(doodad);
+            }
+            catch (Exception ex)
+            {
+                // Never let a single bad cargo slot break the whole despawn sequence
+                Logger.Error(ex, "Failed to drop trade pack from cargo doodad {0} (item {1})", doodad.TemplateId, doodad.ItemId);
             }
         }
+    }
+
+    /// <summary>
+    /// Drops a single trade pack held by a cargo doodad to the ground (as free loot)
+    /// and clears the cargo slot. Fix #1091: slots with stale/broken references are
+    /// cleared as well, so they can never block recovering or un-summoning the vehicle.
+    /// </summary>
+    private void DropTradePackFromDoodad(Doodad doodad)
+    {
+        // Check if the doodad held an item
+        if (doodad.ItemId <= 0)
+        {
+            // Template-only or empty slot: nothing to drop, just leave the template reference
+            // (it is still recoverable through DoodadFuncRecoverItem)
+            return;
+        }
+
+        var droppedItem = ItemManager.Instance.GetItemByItemId(doodad.ItemId);
+
+        // Fix #1091: if the referenced item no longer exists, the slot can never be
+        // dropped or recovered - clear it so it stops blocking the vehicle
+        if (droppedItem == null)
+        {
+            Logger.Warn("DropTradePackFromDoodad: cargo doodad {0} referenced missing item {1}, clearing the stale slot", doodad.TemplateId, doodad.ItemId);
+            doodad.ItemId = 0;
+            doodad.ItemTemplateId = 0;
+            return;
+        }
+
+        // If the held item is a backpack, drop it to the floor
+        if (droppedItem is not Backpack backpackItem)
+        {
+            // Non-backpack items have no known "on ground" doodad form; leave the item alone
+            // (it stays in its container) and clear the slot reference so the vehicle
+            // does not stay blocked forever
+            Logger.Warn("DropTradePackFromDoodad: cargo doodad {0} held non-backpack item {1} ({2}), releasing the slot reference",
+                doodad.TemplateId, droppedItem.Id, droppedItem.TemplateId);
+            doodad.ItemId = 0;
+            doodad.ItemTemplateId = 0;
+            return;
+        }
+
+        // Drop Backpack to the floor (spawn doodad)
+        var putDownSkill = SkillManager.Instance.GetSkillTemplate(backpackItem.Template.UseSkillId);
+        // Fix #1091: guard against incomplete game data (missing use skill or missing
+        // PutDownBackpack effect) - this used to throw NREs straight out of the middle of
+        // the despawn sequence and/or leave the cargo slot referencing a doomed item
+        if (putDownSkill == null)
+        {
+            Logger.Warn("DropTradePackFromDoodad: use skill {0} of backpack item {1} not found, cannot drop the pack as loot", backpackItem.Template.UseSkillId, droppedItem.Id);
+            return;
+        }
+
+        foreach (var skillEffect in putDownSkill.Effects)
+        {
+            if (skillEffect.Template is not PutDownBackpackEffect putDownBackpackEffectTemplate)
+                continue;
+
+            var newDoodadId = putDownBackpackEffectTemplate.BackpackDoodadId;
+
+            // Create the Doodad at location on the floor if it's close to it
+            var newDoodad = DoodadManager.Instance.Create(ParentWorld, 0, newDoodadId, null, true);
+            if (newDoodad == null)
+            {
+                Logger.Warn($"Dropped Doodad {newDoodadId}, from BackpackDoodadId could not be created");
+                break;
+            }
+            newDoodad.IsPersistent = true;
+            newDoodad.Transform = doodad.Transform.CloneDetached();
+            // Add a bit of randomness to the dropped doodad
+            newDoodad.Transform.Local.Translate(
+                Random.Shared.NextSingle() * 2f - 1f,
+                Random.Shared.NextSingle() * 2f - 1f,
+                0f);
+            newDoodad.AttachPoint = AttachPointKind.None;
+            newDoodad.ItemId = droppedItem.Id;
+            newDoodad.ItemTemplateId = droppedItem.TemplateId;
+            newDoodad.UccId = droppedItem.UccId; // Not sure if it's needed, but let's copy the Ucc for completeness' sake
+            newDoodad.SetScale(1f);
+            newDoodad.PlantTime = DateTime.UtcNow;
+            newDoodad.Faction = FactionManager.Instance.GetFaction(FactionsEnum.Friendly);
+
+            var floor = ParentWorld.Template.Floor.GetFloor(newDoodad.Transform.World.Position.X, newDoodad.Transform.World.Position.Y, newDoodad.Transform.World.Position.Z, FloorContext.Spawn);
+            var surface = WorldManager.Instance.GetWorld(doodad.Transform.InstanceId)?.Water?.GetWaterSurface(newDoodad.Transform.World.Position, out _) ?? 0f;
+            var depth = surface - floor;
+
+            // It seems that when the water is deep, drops to the water surface, otherwise, it sinks to the floor
+            // Requires more testing, possibly a server setting?
+            newDoodad.Transform.Local.SetHeight(depth < 30f ? floor : Math.Max(floor, surface));
+
+            // Save new doodad
+            newDoodad.InitDoodad();
+            newDoodad.Spawn();
+            newDoodad.Save();
+
+            // Remove data from trade pack slot
+            doodad.ItemTemplateId = 0;
+            doodad.ItemId = 0;
+
+            // Hacky way to force move to next phase to reset doodad to default before saving
+            var funcs = DoodadManager.Instance.GetDoodadFuncs(doodad.FuncGroupId);
+            foreach (var phaseFunc in funcs)
+            {
+                if (phaseFunc.FuncType == "DoodadFuncRecoverItem")
+                {
+                    doodad.DoChangePhase(null, phaseFunc.NextPhase);
+                    break;
+                }
+            }
+
+            // Save new empty data
+            doodad.Save();
+            return;
+        }
+
+        // Fix #1091: the skill had no PutDownBackpack effect - the pack could not be
+        // dropped as a loot doodad. Clear the slot so it does not keep blocking the
+        // vehicle; the item itself stays in its container instead of being silently
+        // destroyed together with the cargo doodad.
+        Logger.Warn("DropTradePackFromDoodad: skill {0} has no PutDownBackpack effect, releasing cargo slot of doodad {1} without dropping item {2}",
+            putDownSkill.Id, doodad.TemplateId, droppedItem.Id);
+        doodad.ItemId = 0;
+        doodad.ItemTemplateId = 0;
     }
 
     /// <summary>

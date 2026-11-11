@@ -112,7 +112,12 @@ public class SlaveManager(WorldInstance parentWorldInstance)
         return null;
     }
 
-    private Slave GetSlaveByDbId(uint dbId)
+    /// <summary>
+    /// Looks up an active slave by its database Id (Id), NOT by its temporary ObjId.
+    /// Fix #1091: made public so pack-permission checks can resolve the owning vehicle
+    /// from a doodad's OwnerDbId, which stores the slave's database Id.
+    /// </summary>
+    public Slave GetSlaveByDbId(uint dbId)
     {
         lock (_slaveListLock)
         {
@@ -218,10 +223,11 @@ public class SlaveManager(WorldInstance parentWorldInstance)
     /// <param name="owner"></param>
     /// <param name="objId"></param>
     /// <param name="ignoreAttachedItemWarning">If true will not fail if there are attached items</param>
-    public void Delete(Character owner, uint objId, bool ignoreAttachedItemWarning)
+    /// <returns>Returns false when the removal was refused because the vehicle is still holding a trade pack</returns>
+    public bool Delete(Character owner, uint objId, bool ignoreAttachedItemWarning)
     {
         var slaveInfo = GetSlaveByObjId(objId);
-        if (slaveInfo == null) return;
+        if (slaveInfo == null) return true;
         slaveInfo.Save();
         // Remove passengers
         foreach (var character in slaveInfo.AttachedCharacters.Values.ToList())
@@ -232,10 +238,24 @@ public class SlaveManager(WorldInstance parentWorldInstance)
         {
             foreach (var doodad in slaveInfo.AttachedDoodads)
             {
-                if (doodad.ItemId != 0 || doodad.ItemTemplateId != 0)
+                // Fix #1091: only refuse un-summoning for *live* trade pack references.
+                // A stale reference (the item no longer exists, or already moved into some
+                // other container) used to block recovering AND un-summoning forever,
+                // leaving "unknown packs" stuck in the cart across restarts.
+                if (doodad.ItemId != 0)
                 {
-                    owner?.SendErrorMessage(ErrorMessageType.SlaveEquipmentLoadedItem); // TODO: Do we need this error? Client already mentions it.
-                    return; // don't allow un-summon if some it's holding an item (should be a trade-pack)
+                    var heldItem = ItemManager.Instance.GetItemByItemId(doodad.ItemId);
+                    if (heldItem != null && heldItem._holdingContainer?.ContainerType == SlotType.System)
+                    {
+                        owner?.SendErrorMessage(ErrorMessageType.SlaveEquipmentLoadedItem); // TODO: Do we need this error? Client already mentions it.
+                        return false; // don't allow un-summon if it's holding a trade pack
+                    }
+
+                    // Stale reference - clear the slot so the un-summon can proceed
+                    Logger.Warn("SlaveManager.Delete: clearing stale cargo slot on doodad {0} (slave {1}) that referenced missing or misplaced item {2}",
+                        doodad.TemplateId, slaveInfo.TemplateId, doodad.ItemId);
+                    doodad.ItemId = 0;
+                    doodad.ItemTemplateId = 0;
                 }
             }
         }
@@ -280,6 +300,7 @@ public class SlaveManager(WorldInstance parentWorldInstance)
 
         slaveInfo.Despawn = DateTime.UtcNow.AddSeconds(slaveInfo.Template.PortalTime + 0.5f);
         World.SpawnManager.AddDespawn(slaveInfo);
+        return true;
     }
 
     /// <summary>
@@ -309,8 +330,16 @@ public class SlaveManager(WorldInstance parentWorldInstance)
         {
             activeSlaveInfo.Save();
             // TODO: If too far away, don't delete
-            Delete(owner, activeSlaveInfo.ObjId, false);
-            // return;
+            // Fix #1091: Delete() can refuse when the old vehicle still holds a live trade pack.
+            // Previously the result was ignored and a second slave was summoned with the same
+            // summoning item, leaving two DB rows for one item (which also made re-loading the
+            // saved vehicle non-deterministic). Abort instead so the player has to unload the
+            // pack first.
+            if (!Delete(owner, activeSlaveInfo.ObjId, false))
+            {
+                owner.SendErrorMessage(ErrorMessageType.SlaveEquipmentLoadedItem);
+                return;
+            }
         }
 
         if (skillData.ItemId == 0 || skillData.ItemTemplateId == 0)
