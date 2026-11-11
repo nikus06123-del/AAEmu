@@ -2892,8 +2892,31 @@ public class DoodadManager(IObjectIdManager objectIdManager, IDoodadIdManager do
             return explicitFunc;
         }
 
+        // Upstream issue #696: for explicit skill casts with no explicit binding, avoid
+        // falling through into a destructive func (chop/harvest) when the same group also
+        // contains a non-destructive candidate. Otherwise casting e.g. Tree Thinning on an
+        // old-growth tree could execute the chop-down func and visually fell the tree.
+        List<DoodadFunc> nonDestructiveCandidates = null;
+        if (skillId > 0)
+        {
+            nonDestructiveCandidates = [];
+            foreach (var func in funcsInGroup)
+            {
+                if (func.SkillId != 0)
+                    continue;
+
+                var funcTemplate = GetFuncTemplate(func.FuncId, func.FuncType);
+                if (funcTemplate is DoodadFuncCutdown or DoodadFuncCutdowning or DoodadFuncHarvest)
+                    continue;
+
+                nonDestructiveCandidates.Add(func);
+            }
+        }
+
+        var fallbackCandidates = nonDestructiveCandidates is { Count: > 0 } ? nonDestructiveCandidates : funcsInGroup;
+
         // First we skip functions with NextPhase = -1
-        foreach (var func in funcsInGroup)
+        foreach (var func in fallbackCandidates)
         {
             if (func.SkillId == 0 && func.NextPhase != -1)
             {
@@ -2902,7 +2925,7 @@ public class DoodadManager(IObjectIdManager objectIdManager, IDoodadIdManager do
         }
 
         // Then we search with NextPhase = -1
-        foreach (var func in funcsInGroup)
+        foreach (var func in fallbackCandidates)
         {
             if (func.SkillId == 0)
             {
