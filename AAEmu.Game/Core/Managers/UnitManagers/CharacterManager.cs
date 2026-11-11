@@ -591,6 +591,24 @@ public class CharacterManager(
 
         if (character.SaveDirectlyToDatabase())
         {
+            // Fix #1170: ItemManager only writes the items table during the periodic autosave
+            // (default every 5 minutes). Body parts (face, hair, body, beard, ...) that make up
+            // the character's visible model and the starting equipment are regular items in the
+            // equipment container, so a server restart within that window left them missing from
+            // the database and characters appeared without their model / items after re-login.
+            // Persist the freshly created items immediately, straight after the character row.
+            try
+            {
+                using var itemConnection = MySQL.CreateConnection();
+                using var itemTransaction = itemConnection.BeginTransaction();
+                itemManager.Save(itemConnection, itemTransaction);
+                itemTransaction.Commit();
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Failed to save items of newly created character {0} - {1}", character.Id, character.Name);
+            }
+
             connection.Characters.Add(character.Id, character);
             connection.SendPacket(new SCCreateCharacterResponsePacket(character));
         }

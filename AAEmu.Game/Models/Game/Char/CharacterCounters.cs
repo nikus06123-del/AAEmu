@@ -4,6 +4,12 @@ namespace AAEmu.Game.Models.Game.Char;
 
 public partial class Character
 {
+    /// <summary>
+    /// Mirrors the characters.deleted database flag. Fix: previously the character save
+    /// used REPLACE INTO without this column, silently resetting any pending deletion
+    /// mark made by the character deletion timer while the row was being rewritten.
+    /// </summary>
+    public bool Deleted { get; set; }
     public uint HostileFactionKills { get; set; }
     public uint HonorGainedInCombat { get; set; }
     public int ConsumedLaborPower { get; set; }

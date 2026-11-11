@@ -2284,6 +2284,7 @@ public partial class Character : Unit, ICharacter
                     character.EvidenceReportedCount = reader.GetInt32("evidence_reported_count");
                     character.BotReportedCount = reader.GetInt32("bot_reported_count");
                     character.ReportedAsBotCount = reader.GetInt32("reported_as_bot_count");
+                    character.Deleted = reader.GetInt32("deleted") != 0;
                     character.OfflineGuiltyTime = reader.GetInt32("offline_guilty_time");
                     character.OfflineGuiltyRegion = (CourtRoomRegion)reader.GetInt32("offline_guilty_region");
 
@@ -2416,6 +2417,7 @@ public partial class Character : Unit, ICharacter
                     character.EvidenceReportedCount = reader.GetInt32("evidence_reported_count");
                     character.BotReportedCount = reader.GetInt32("bot_reported_count");
                     character.ReportedAsBotCount = reader.GetInt32("reported_as_bot_count");
+                    character.Deleted = reader.GetInt32("deleted") != 0;
                     character.OfflineGuiltyTime = reader.GetInt32("offline_guilty_time");
                     character.OfflineGuiltyRegion = (CourtRoomRegion)reader.GetInt32("offline_guilty_region");
 
@@ -2645,7 +2647,7 @@ public partial class Character : Unit, ICharacter
                     "`delete_request_time`,`transfer_request_time`,`delete_time`,`auto_use_aapoint`,`prev_point`,`point`,`gift`," +
                     "`num_inv_slot`,`num_bank_slot`,`expanded_expert`,`slots`,`created_at`,`updated_at`,`return_district`,`online_time`," +
                     "`arrest_count`, `accept_guilty_count`, `accept_trial_count`, `not_guilty_count`, `guilty_count`, `evidence_reported_count`, `bot_reported_count`," +
-                    "`offline_guilty_time`,`offline_guilty_region`" +
+                    "`offline_guilty_time`,`offline_guilty_region`,`deleted`,`reported_as_bot_count`" +
                     ") VALUES (" +
                     "@id,@account_id,@name,@access_level,@race,@gender,@unit_model_params,@level,@experience,@recoverable_exp," +
                     "@hp,@mp,@consumed_lp,@ability1,@ability2,@ability3," +
@@ -2656,7 +2658,7 @@ public partial class Character : Unit, ICharacter
                     "@delete_request_time,@transfer_request_time,@delete_time,@auto_use_aapoint,@prev_point,@point,@gift," +
                     "@num_inv_slot,@num_bank_slot,@expanded_expert,@slots,@created_at,@updated_at,@return_district,@online_time," +
                     "@arrest_count, @accept_guilty_count, @accept_trial_count, @not_guilty_count, @guilty_count, @evidence_reported_count, @bot_reported_count," +
-                    "@offline_guilty_time,@offline_guilty_region" +
+                    "@offline_guilty_time,@offline_guilty_region,@deleted,@reported_as_bot_count" +
                     ")";
 
                 command.Parameters.AddWithValue("@id", Id);
@@ -2745,6 +2747,10 @@ public partial class Character : Unit, ICharacter
                 command.Parameters.AddWithValue("@reported_as_bot_count", ReportedAsBotCount);
                 command.Parameters.AddWithValue("@offline_guilty_time", OfflineGuiltyTime);
                 command.Parameters.AddWithValue("@offline_guilty_region", (int)OfflineGuiltyRegion);
+                // Fix: previously these two columns were missing from the REPLACE column list,
+                // so every save silently reset reported_as_bot_count and could resurrect a
+                // character that had already been marked as deleted by the deletion timer
+                command.Parameters.AddWithValue("@deleted", Deleted ? 1 : 0);
 
                 command.ExecuteNonQuery();
             }
