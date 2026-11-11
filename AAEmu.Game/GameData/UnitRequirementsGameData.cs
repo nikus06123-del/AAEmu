@@ -117,6 +117,10 @@ public class UnitRequirementsGameData : Singleton<UnitRequirementsGameData>, IGa
         {
             if (map is TreasureMap treasureMap)
             {
+                // Re-roll maps that were created before the chest spawner data was
+                // available instead of letting them fail the distance check forever
+                // (upstream issue #1152)
+                treasureMap.EnsureTreasureMapData();
                 var dist = character.Transform.World.Position - treasureMap.GetMapPosition(character.Transform.World.Position.Z);
                 if (dist.Length() <= maxRange)
                     return treasureMap;

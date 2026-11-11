@@ -9,8 +9,15 @@ namespace AAEmu.Game.Models.Game.Items;
 
 public class TreasureMap : Item
 {
+    // Logger is inherited from PacketMarshaler
+
     private long _mapPositionX;
     private long _mapPositionY;
+
+    /// <summary>
+    /// True when the map points at an actual treasure chest location
+    /// </summary>
+    public bool HasValidTreasureTarget => MapPositionX != 0 || MapPositionY != 0;
 
     public double MapPositionX
     {
@@ -37,9 +44,11 @@ public class TreasureMap : Item
         var possibleChests = WorldManager.Instance.GetWorld(WorldManager.DefaultInstanceId).SpawnManager.GetTreasureChestDoodadSpawners();
         if (possibleChests.Count <= 0)
         {
-            // No valid location found
-            // Let's mark it Mythic for fun as it'll be at 0, 0 very much out of bounds if it isn't from loading items
-            Grade = (byte)ItemGrade.Mythic;
+            // No valid location found (upstream issue #1152): leave the coordinates at
+            // (0,0) and keep them re-rollable so EnsureTreasureMapData() can retry once
+            // the chest spawners are available, instead of permanently stamping the map
+            // with an unreachable (0,0) target and a Mythic grade.
+            Logger.Warn("GenerateTreasureMapData: no treasure chest spawners available, target will be re-rolled on first use");
             return;
         }
         var rngPos = Random.Shared.Next(possibleChests.Count);
@@ -71,6 +80,18 @@ public class TreasureMap : Item
         }
     }
 
+    /// <summary>
+    /// Re-rolls the treasure target when the map was created before the treasure chest
+    /// spawner data was available (upstream issue #1152: maps generated at (0,0) could
+    /// never pass the proximity check and became permanently unusable)
+    /// </summary>
+    public void EnsureTreasureMapData()
+    {
+        if (HasValidTreasureTarget)
+            return;
+        GenerateTreasureMapData();
+    }
+
     public TreasureMap()
     {
         // GenerateTreasureMapData();
@@ -78,7 +99,18 @@ public class TreasureMap : Item
 
     public TreasureMap(ulong id, ItemTemplate template, int count) : base(id, template, count)
     {
-        GenerateTreasureMapData();
+        try
+        {
+            GenerateTreasureMapData();
+        }
+        catch (Exception e)
+        {
+            // Never let a generation failure bubble up into ItemManager.Create's
+            // fallback, which would degrade the map into a plain Item that can no
+            // longer carry coordinates at all (#1152). The target is re-rolled
+            // lazily by EnsureTreasureMapData() on first use instead.
+            Logger.Warn(e, "TreasureMap: failed to generate target data, will retry on first use");
+        }
     }
 
     public override void ReadDetails(PacketStream stream)

@@ -15,6 +15,7 @@ using AAEmu.Game.Models.Game.Items;
 using AAEmu.Game.Models.Game.Items.Actions;
 using AAEmu.Game.Models.Game.Units;
 using AAEmu.Game.Models.Game.World;
+using AAEmu.Game.Models.StaticValues;
 using AAEmu.Game.Models.Tasks.Doodads;
 
 /*
@@ -836,7 +837,12 @@ public class Doodad : BaseUnit
     /// </param>
     public void OnSkillHit(BaseUnit caster, uint skillId, bool isAoeHit = false)
     {
-        if (isAoeHit && DoodadManager.Instance.GetExplicitFunc(FuncGroupId, skillId) == null)
+        // Upstream issue #1152: the treasure dig skill reveals the buried chest through
+        // its area hit, so it must pass the collateral gate even when the chest's phase
+        // group has no explicit binding for the skill.
+        if (isAoeHit &&
+            skillId != SkillsEnum.DigUpTreasureChestMarkedOnMap &&
+            DoodadManager.Instance.GetExplicitFunc(FuncGroupId, skillId) == null)
         {
             Logger.Trace($"OnSkillHit: ignoring collateral AoE hit from skill {skillId} on doodad {ObjId} (TemplateId {TemplateId}), phase {FuncGroupId} has no binding for this skill");
             return;
