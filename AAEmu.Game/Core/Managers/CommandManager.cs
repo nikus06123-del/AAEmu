@@ -92,7 +92,10 @@ public partial class CommandManager : Singleton<CommandManager>, ICommandManager
 
     public bool Handle(Character character, string text, out IMessageOutput messageOutput)
     {
-        messageOutput = new CharacterMessageOutput(character);
+        // Upstream issue #1125: a null character means the command was typed in the
+        // server console window. Console access is trusted (physical host access), so
+        // commands run at the highest access level and their output goes to stdout.
+        messageOutput = character != null ? new CharacterMessageOutput(character) : new ConsoleMessageOutput();
 
         // Un-escape the string, as the client sends it escaped
         // It is required if you want to test things like @NPC_NAME() and |cFF00FFFF text colors |r
@@ -103,11 +106,13 @@ public partial class CommandManager : Singleton<CommandManager>, ICommandManager
         // var words = text.Split(' ');
         var thisCommand = words.Length > 0 ? words[0].ToLower() : "";
 
-        var characterAccessLevel = CharacterManager.Instance.GetEffectiveAccessLevel(character);
+        var characterAccessLevel = character != null
+            ? CharacterManager.Instance.GetEffectiveAccessLevel(character)
+            : int.MaxValue;
 
         // Only enable the force_scripts_reload when we don't have anything loaded, this is simply a failsafe function in case
         // things aren't working out when live-editing scripts
-        if (_commands.Count <= 0 && words.Length == 3 && thisCommand == "scripts" && words[1] == "reload" && words[2] == "force" && characterAccessLevel >= 100)
+        if (_commands.Count <= 0 && words.Length == 3 && thisCommand == "scripts" && words[1] == "reload" && words[2] == "force" && characterAccessLevel >= 100 && character != null)
         {
             ForceScriptsReload(character);
 
@@ -164,7 +169,10 @@ public partial class CommandManager : Singleton<CommandManager>, ICommandManager
         }
         catch (Exception e)
         {
-            character.SendMessage(ChatType.System, e.Message, Color.Red);
+            if (character != null)
+                character.SendMessage(ChatType.System, e.Message, Color.Red);
+            else
+                messageOutput.SendMessage($"[Error] {e.Message}");
             Logger.Error(e.Message);
             Logger.Error(e.StackTrace);
         }

@@ -113,6 +113,8 @@ public static class Program
                 services.AddSingleton<IHostedService, GameService>();
                 services.AddSingleton<IHostedService, WebApiService>();
                 services.AddSingleton<IHostedService, DiscordBotService>();
+                // Reads GM commands from the server console window (upstream issue #1125)
+                services.AddSingleton<IHostedService, ConsoleService>();
 
                 // -- Singleton<T>-based managers (AAEmu.Game.Core.Managers) --
                 services.AddSingleton<AccessLevelManager>();
