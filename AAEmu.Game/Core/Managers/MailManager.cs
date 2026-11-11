@@ -308,8 +308,12 @@ public class MailManager(IMailIdManager mailIdManager, INameManager nameManager,
         character?.Mails.UnreadMailCount.ResetReceived();
         foreach (var mail in tempMails)
         {
-            //if ((mail.Value.Header.Status != MailStatus.Read) && (mail.Value.Header.SenderId != character.Id))
-            if (mail.Value.Header.Status != MailStatus.Read)
+            // Fix #1175: only treat the character as a recipient of the mail for
+            // "you've got mail" notifications and unread counts. Sent mail (where the
+            // character is only the sender) must stay in the sent tab; previously it was
+            // announced as new incoming mail on every re-login, which looked like the
+            // mail had been "returned to sender".
+            if (mail.Value.Header.Status != MailStatus.Read && mail.Value.Header.ReceiverId == characterId)
             {
                 character?.Mails.UnreadMailCount.UpdateReceived(mail.Value.MailType, 1);
                 var addBody = mail.Value.MailType == MailType.Charged;
