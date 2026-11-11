@@ -448,7 +448,11 @@ public class SpawnManager(WorldInstance parentWorld)
                     }
                     if (!DoodadManager.Instance.Exist(spawner.UnitId))
                     {
-                        Logger.Trace($"Doodad Template {spawner.UnitId} (file entry {entry}) doesn't exist - {jsonFileName}");
+                        // Upstream issue #1259: a doodad template referenced by the spawn
+                        // data but missing from the loaded templates is invisible at the
+                        // default log level, which makes quests with missing doodads
+                        // effectively undiagnosable. Surface it as a warning.
+                        Logger.Warn($"Doodad Template {spawner.UnitId} (file entry {entry}) doesn't exist - {jsonFileName}");
                         continue;
                     }
                     spawner.Id = _nextId;

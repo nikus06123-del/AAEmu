@@ -21,6 +21,15 @@ public class InteractionEffect : EffectTemplate
     {
         Logger.Debug("InteractionEffect, {0}", WorldInteraction);
 
+        // Fire quest interaction events before checking whether the world interaction
+        // class exists (upstream issues #1279 / #1255): quest progress for doodad
+        // interactions must not depend on the WI implementation being present, otherwise
+        // quests whose skills use unimplemented world interactions can never advance.
+        if (caster is Character questCharacter && !questCharacter.SkillCancelled && target is Doodad questDoodad)
+        {
+            QuestManager.Instance.DoDoodadInteractionEvents(questCharacter, questCharacter, questDoodad.TemplateId);
+        }
+
         var classType = Type.GetType("AAEmu.Game.Models.Game.World.Interactions." + WorldInteraction);
         if (classType == null)
         {
@@ -36,16 +45,6 @@ public class InteractionEffect : EffectTemplate
         if (source is { Skill: { } } && casterObj != null && target != null && targetObj != null && source.Skill.Template != null)
         {
             action?.Execute(caster, casterObj, target, targetObj, source.Skill.Template.Id, DoodadId);
-        }
-
-        if (caster is not Character character) { return; }
-        if (character.SkillCancelled) { return; }
-        if (target is Doodad doodad)
-        {
-            //character.Quests.OnInteraction(WorldInteraction, target);
-            // инициируем событие
-            //Task.Run(() => QuestManager.Instance.DoInteractionEvents((Character)caster, target.TemplateId));
-            QuestManager.Instance.DoDoodadInteractionEvents((Character)caster, (Character)caster, target.TemplateId);
         }
     }
 }
