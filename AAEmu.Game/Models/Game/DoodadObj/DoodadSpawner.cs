@@ -248,6 +248,30 @@ public class DoodadSpawner : Spawner<Doodad>
     }
 
     /// <summary>
+    /// Despawns a doodad that was consumed by use (e.g. a func chain ending with
+    /// next_phase = -1) and schedules a respawn when the spawner allows it, so that
+    /// world quest doodads and resource nodes become available again over time
+    /// (upstream issue #1267). Scheduling is skipped when a func-task respawn is
+    /// still pending on the doodad to prevent double spawns.
+    /// </summary>
+    /// <param name="doodad"></param>
+    public void DespawnWithRespawn(Doodad doodad)
+    {
+        var scheduleRespawn = RespawnTime > 0 && doodad.FuncTask == null && doodad.Respawn == DateTime.MinValue;
+        if (scheduleRespawn)
+        {
+            doodad.Respawn = DateTime.UtcNow.AddSeconds(RespawnTime);
+            doodad.ParentWorld?.SpawnManager.AddRespawn(doodad);
+        }
+        else
+        {
+            Last = null;
+        }
+
+        Despawn(doodad);
+    }
+
+    /// <summary>
     /// Does a despawn for target Doodad 
     /// </summary>
     /// <param name="doodad"></param>

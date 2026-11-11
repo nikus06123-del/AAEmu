@@ -598,10 +598,11 @@ public class Doodad : BaseUnit
                         Logger.Debug($"DoFunc::DoodadFuncTimer: The current timer has been canceled. TemplateId {TemplateId}, ObjId {ObjId}, nextPhase {func.NextPhase}");
                     }
 
-                    // Delete doodad
+                    // Delete doodad (and schedule a respawn if the spawner supports it,
+                    // so consumed quest/resource doodads come back over time - issue #1267)
                     if (Spawner is not null)
                     {
-                        Spawner.Despawn(this);
+                        Spawner.DespawnWithRespawn(this);
                     }
                     else
                     {
