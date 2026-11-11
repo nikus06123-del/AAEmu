@@ -1021,7 +1021,10 @@ public class Skill
             }
             else if (target is Doodad doodad)
             {
-                doodad.OnSkillHit(caster, Id);
+                // Fix #1450: tell the doodad whether it was the explicit cast target or just
+                // collateral damage caught in the AoE radius, so stray AoE can no longer
+                // trigger unbound phase chains and permanently despawn quest doodads.
+                doodad.OnSkillHit(caster, Id, Template.TargetAreaRadius > 0 && !ReferenceEquals(target, targetSelf));
             }
         }
 

@@ -826,8 +826,21 @@ public class Doodad : BaseUnit
     /// </summary>
     /// <param name="caster"></param>
     /// <param name="skillId"></param>
-    public void OnSkillHit(BaseUnit caster, uint skillId)
+    /// <param name="isAoeHit">
+    /// True when the doodad was merely caught inside a skill's target area instead of
+    /// being the explicit cast target (issue #1450). Collateral AoE hits may only
+    /// trigger phase functions that are explicitly bound to the hitting skill, so that
+    /// stray AoE near e.g. the Amber Boulder (4252) can no longer walk its phase chain
+    /// down to a next_phase = -1 func and permanently despawn the doodad.
+    /// </param>
+    public void OnSkillHit(BaseUnit caster, uint skillId, bool isAoeHit = false)
     {
+        if (isAoeHit && DoodadManager.Instance.GetExplicitFunc(FuncGroupId, skillId) == null)
+        {
+            Logger.Trace($"OnSkillHit: ignoring collateral AoE hit from skill {skillId} on doodad {ObjId} (TemplateId {TemplateId}), phase {FuncGroupId} has no binding for this skill");
+            return;
+        }
+
         var funcs = DoodadManager.Instance.GetFuncsForGroup(FuncGroupId);
         if (funcs == null) { return; }
 

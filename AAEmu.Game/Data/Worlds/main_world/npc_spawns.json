@@ -77193,7 +77193,10 @@
         }
     },
     {
-        "UnitId": 10119,
+        "UnitId": 10119, // Freed Flesh Golem - quest 3447 Fellow Searchers (issue #1450):
+        // registered as event spawner 61649 instead of a permanent world spawn, so it only
+        // appears when the Shatter skill (16790) breaks the Amber Boulder (4252)
+        "NpcSpawnerIds": [61649],
         "Position": {
             "X": 21377.96,
             "Y": 8037.207,

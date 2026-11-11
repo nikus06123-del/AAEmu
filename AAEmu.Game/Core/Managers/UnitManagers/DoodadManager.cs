@@ -2885,6 +2885,47 @@ public class DoodadManager(IObjectIdManager objectIdManager, IDoodadIdManager do
             return null;
         }
 
+        // Explicit skill bindings take priority (see GetExplicitFunc)
+        var explicitFunc = GetExplicitFunc(funcsInGroup, skillId);
+        if (explicitFunc != null)
+        {
+            return explicitFunc;
+        }
+
+        // First we skip functions with NextPhase = -1
+        foreach (var func in funcsInGroup)
+        {
+            if (func.SkillId == 0 && func.NextPhase != -1)
+            {
+                return func;
+            }
+        }
+
+        // Then we search with NextPhase = -1
+        foreach (var func in funcsInGroup)
+        {
+            if (func.SkillId == 0)
+            {
+                return func;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the func in the given phase group that is explicitly bound to the given
+    /// skill id, ignoring the "unbound" fallbacks GetFunc() applies for arbitrary skill
+    /// ids. Used to tell real doodad interactions apart from collateral AoE hits on
+    /// doodads that merely happen to stand inside a skill's target area (issue #1450).
+    /// </summary>
+    public DoodadFunc GetExplicitFunc(uint funcGroupId, uint skillId)
+    {
+        return _funcsByGroups.TryGetValue(funcGroupId, out var funcsInGroup) ? GetExplicitFunc(funcsInGroup, skillId) : null;
+    }
+
+    private DoodadFunc GetExplicitFunc(List<DoodadFunc> funcsInGroup, uint skillId)
+    {
         foreach (var func in funcsInGroup)
         {
             if (func.SkillId == skillId)
@@ -2904,21 +2945,10 @@ public class DoodadManager(IObjectIdManager objectIdManager, IDoodadIdManager do
             {
                 return func;
             }
-        }
 
-        // First we skip functions with NextPhase = -1
-        foreach (var func in funcsInGroup)
-        {
-            if (func.SkillId == 0 && func.NextPhase != -1)
-            {
-                return func;
-            }
-        }
-
-        // Then we search with NextPhase = -1
-        foreach (var func in funcsInGroup)
-        {
-            if (func.SkillId == 0)
+            // Special handler for skill hit (func) skill id - some doodads only bind the
+            // reacting skill on the template level (e.g. the Amber Boulder of quest 3447)
+            if (funcTemplate is DoodadFuncSkillHit { SkillId: > 0 } skillHitTemplate && skillHitTemplate.SkillId == skillId)
             {
                 return func;
             }
