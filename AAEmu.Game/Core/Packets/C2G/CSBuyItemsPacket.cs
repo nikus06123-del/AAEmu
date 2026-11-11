@@ -60,6 +60,9 @@ public class CSBuyItemsPacket() : GamePacket(CSOffsets.CSBuyItemsPacket, 1)
         var money = 0;
         var honorPoints = 0;
         var vocationBadges = 0;
+        // Fix: track buyback costs separately from the shop purchases so we can only charge
+        // for buyback items that were actually restored to the bag
+        var buyBackMoney = 0;
 
         // Get list of items to buy from the shop
         var itemsBuy = new List<(uint itemId, byte itemGrade, int itemCount)>();
@@ -110,14 +113,18 @@ public class CSBuyItemsPacket() : GamePacket(CSOffsets.CSBuyItemsPacket, 1)
             if (item == null)
                 continue;
             itemsBuyBack.Add(item, index);
-            money += (int)(item.Template.Refund * ItemManager.Instance.GetGradeTemplate(item.Grade).RefundMultiplier / 100f) *
-                     item.Count;
+            buyBackMoney += (int)(item.Template.Refund * ItemManager.Instance.GetGradeTemplate(item.Grade).RefundMultiplier / 100f) *
+                            item.Count;
         }
 
         var useAAPoint = stream.ReadBoolean();
 
-        if (money > Connection.ActiveChar.Money &&
-            honorPoints > Connection.ActiveChar.HonorPoint &&
+        // Fix: this check used && instead of ||, meaning the purchase was only rejected when
+        // EVERY currency was short at the same time. A player with enough honor (or vocation
+        // badges) could buy any number of gold-priced items for free and drive the gold counter
+        // negative, since ChangeMoney() only refuses withdrawals above the current balance.
+        if (money + buyBackMoney > Connection.ActiveChar.Money ||
+            honorPoints > Connection.ActiveChar.HonorPoint ||
             vocationBadges > Connection.ActiveChar.VocationPoint)
             return;
 
@@ -129,24 +136,19 @@ public class CSBuyItemsPacket() : GamePacket(CSOffsets.CSBuyItemsPacket, 1)
             // Connection.ActiveChar.Inventory.Bag.AcquireDefaultItem(ItemTaskType.StoreBuy, itemId, count, grade);
         }
 
+        // Fix: only charge for buyback items that actually made it back into the bag (it can be full)
+        var boughtBackMoney = 0;
         foreach (var (item, index) in itemsBuyBack)
         {
-            Connection.ActiveChar.Inventory.Bag.AddOrMoveExistingItem(ItemTaskType.StoreBuy, item);
-            tasks.Add(new ItemBuyback(item));
-            /*
-            var res = Connection.ActiveChar.Inventory.AddItem(ItemTaskType.StoreBuy, item);
-            if (res == null)
+            if (!Connection.ActiveChar.Inventory.Bag.AddOrMoveExistingItem(ItemTaskType.StoreBuy, item))
             {
-                ItemManager.Instance.ReleaseId(item.Id);
-                return;
+                Logger.Warn("Buyback of item {0} ({1}) failed, bag might be full, skipping", item.Id, item.TemplateId);
+                continue;
             }
 
-            if (res.Id != item.Id)
-                tasks.Add(new ItemCountUpdate(res, item.Count));
-            else
-                tasks.Add(new ItemBuyback(item));
-            Connection.ActiveChar.BuyBack[index] = null;
-            */
+            boughtBackMoney += (int)(item.Template.Refund *
+                ItemManager.Instance.GetGradeTemplate(item.Grade).RefundMultiplier / 100f) * item.Count;
+            tasks.Add(new ItemBuyback(item));
         }
 
         if (honorPoints > 0)
@@ -159,9 +161,11 @@ public class CSBuyItemsPacket() : GamePacket(CSOffsets.CSBuyItemsPacket, 1)
             Connection.ActiveChar.ChangeGamePoints(GamePointKind.Vocation, -vocationBadges);
         }
 
-        if (money > 0)
+        // Fix: charge the shop price plus only the successful buyback refunds
+        var totalMoney = money + boughtBackMoney;
+        if (totalMoney > 0)
         {
-            Connection.ActiveChar.ChangeMoney(SlotType.Inventory, -money);
+            Connection.ActiveChar.ChangeMoney(SlotType.Inventory, -totalMoney);
         }
 
         Connection.SendPacket(new SCItemTaskSuccessPacket(ItemTaskType.StoreBuy, tasks, []));
