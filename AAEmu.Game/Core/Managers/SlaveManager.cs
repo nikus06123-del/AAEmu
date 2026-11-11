@@ -240,6 +240,11 @@ public class SlaveManager(WorldInstance parentWorldInstance)
             }
         }
 
+        // Fix #1168: drop any trade packs held by cargo slots into the world as free loot
+        // before the ship and its doodads are despawned/destroyed. Without this, packs
+        // silently disappeared along with the vehicle (e.g. forced delete or timed cleanup).
+        slaveInfo.DropAttachedTradePacks();
+
         var despawnDelayedTime = DateTime.UtcNow.AddSeconds(slaveInfo.Template.PortalTime - 0.5f);
 
         slaveInfo.Transform.DetachAll();

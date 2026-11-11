@@ -844,84 +844,101 @@ public class Slave : Unit
     }
 
     /// <summary>
+    /// Drops any trade packs currently held by attached cargo doodads into the world.
+    /// The pack doodad is spawned at the vehicle's position (sinks to the floor or water surface),
+    /// becomes free loot, and the cargo slot is cleared. Does not delete the cargo doodads themselves.
+    /// Fix #1168: previously packs were silently destroyed whenever the vehicle despawned
+    /// (offline owner, forced delete, timed cleanup) instead of dropping as loot.
+    /// </summary>
+    public void DropAttachedTradePacks()
+    {
+        foreach (var doodad in AttachedDoodads)
+        {
+            // Check if the doodad held an item
+            if (doodad.ItemId <= 0)
+                continue;
+
+            var droppedItem = ItemManager.Instance.GetItemByItemId(doodad.ItemId);
+            // If the held item is a backpack, drop it to the floor
+            if (droppedItem is not Backpack backpackItem)
+                continue;
+
+            // Drop Backpack to the floor (spawn doodad)
+            var putDownSkill = SkillManager.Instance.GetSkillTemplate(backpackItem.Template.UseSkillId);
+            foreach (var skillEffect in putDownSkill.Effects)
+            {
+                if (skillEffect.Template is not PutDownBackpackEffect putDownBackpackEffectTemplate)
+                    continue;
+
+                var newDoodadId = putDownBackpackEffectTemplate.BackpackDoodadId;
+
+                // Create the Doodad at location on the floor if it's close to it
+                var newDoodad = DoodadManager.Instance.Create(ParentWorld, 0, newDoodadId, null, true);
+                if (newDoodad == null)
+                {
+                    Logger.Warn($"Dropped Doodad {newDoodadId}, from BackpackDoodadId could not be created");
+                    break;
+                }
+                newDoodad.IsPersistent = true;
+                newDoodad.Transform = doodad.Transform.CloneDetached();
+                // Add a bit of randomness to the dropped doodad
+                newDoodad.Transform.Local.Translate(
+                    Random.Shared.NextSingle() * 2f - 1f,
+                    Random.Shared.NextSingle() * 2f - 1f,
+                    0f);
+                newDoodad.AttachPoint = AttachPointKind.None;
+                newDoodad.ItemId = droppedItem.Id;
+                newDoodad.ItemTemplateId = droppedItem.TemplateId;
+                newDoodad.UccId = droppedItem.UccId; // Not sure if it's needed, but let's copy the Ucc for completeness' sake
+                newDoodad.SetScale(1f);
+                newDoodad.PlantTime = DateTime.UtcNow;
+                newDoodad.Faction = FactionManager.Instance.GetFaction(FactionsEnum.Friendly);
+
+                var floor = ParentWorld.Template.Floor.GetFloor(newDoodad.Transform.World.Position.X, newDoodad.Transform.World.Position.Y, newDoodad.Transform.World.Position.Z, FloorContext.Spawn);
+                var surface = WorldManager.Instance.GetWorld(doodad.Transform.InstanceId)?.Water?.GetWaterSurface(newDoodad.Transform.World.Position, out _) ?? 0f;
+                var depth = surface - floor;
+
+                // It seems that when the water is deep, drops to the water surface, otherwise, it sinks to the floor
+                // Requires more testing, possibly a server setting?
+                newDoodad.Transform.Local.SetHeight(depth < 30f ? floor : Math.Max(floor, surface));
+
+                // Save new doodad
+                newDoodad.InitDoodad();
+                newDoodad.Spawn();
+                newDoodad.Save();
+
+                // Remove data from trade pack slot
+                doodad.ItemTemplateId = 0;
+                doodad.ItemId = 0;
+
+                // Hacky way to force move to next phase to reset doodad to default before saving
+                var funcs = DoodadManager.Instance.GetDoodadFuncs(doodad.FuncGroupId);
+                foreach (var phaseFunc in funcs)
+                {
+                    if (phaseFunc.FuncType == "DoodadFuncRecoverItem")
+                    {
+                        doodad.DoChangePhase(null, phaseFunc.NextPhase);
+                        break;
+                    }
+                }
+
+                // Save new empty data
+                doodad.Save();
+            }
+        }
+    }
+
+    /// <summary>
     /// Destroys (de-spawns) any child doodads and slaves and drops trade packs if present in a random 1m range to the center of the vehicle
     /// </summary>
     private void DestroyAttachedItems()
     {
+        // Drop any held trade packs into the world first (as free loot), then destroy the cargo slots
+        DropAttachedTradePacks();
+
         // Destroy Doodads
         foreach (var doodad in AttachedDoodads)
         {
-            // Check if the doodad held an item
-            if (doodad.ItemId > 0)
-            {
-                var droppedItem = ItemManager.Instance.GetItemByItemId(doodad.ItemId);
-                // If the held item is a backpack, drop it to the floor
-                if (droppedItem is Backpack backpackItem)
-                {
-                    // Drop Backpack to the floor (spawn doodad)
-                    var putDownSkill = SkillManager.Instance.GetSkillTemplate(backpackItem.Template.UseSkillId);
-                    foreach (var skillEffect in putDownSkill.Effects)
-                    {
-                        if (skillEffect.Template is not PutDownBackpackEffect putDownBackpackEffectTemplate)
-                            continue;
-
-                        var newDoodadId = putDownBackpackEffectTemplate.BackpackDoodadId;
-
-                        // Create the Doodad at location on the floor if it's close to it
-                        var newDoodad = DoodadManager.Instance.Create(ParentWorld, 0, newDoodadId, null, true);
-                        if (newDoodad == null)
-                        {
-                            Logger.Warn($"Dropped Doodad {newDoodadId}, from BackpackDoodadId could not be created");
-                            break;
-                        }
-                        newDoodad.IsPersistent = true;
-                        newDoodad.Transform = doodad.Transform.CloneDetached();
-                        // Add a bit of randomness to the dropped doodad
-                        newDoodad.Transform.Local.Translate(
-                            Random.Shared.NextSingle() * 2f - 1f,
-                            Random.Shared.NextSingle() * 2f - 1f,
-                            0f);
-                        newDoodad.AttachPoint = AttachPointKind.None;
-                        newDoodad.ItemId = droppedItem.Id;
-                        newDoodad.ItemTemplateId = droppedItem.TemplateId;
-                        newDoodad.UccId = droppedItem.UccId; // Not sure if it's needed, but let's copy the Ucc for completeness' sake
-                        newDoodad.SetScale(1f);
-                        newDoodad.PlantTime = DateTime.UtcNow;
-                        newDoodad.Faction = FactionManager.Instance.GetFaction(FactionsEnum.Friendly);
-
-                        var floor = ParentWorld.Template.Floor.GetFloor(newDoodad.Transform.World.Position.X, newDoodad.Transform.World.Position.Y, newDoodad.Transform.World.Position.Z, FloorContext.Spawn);
-                        var surface = WorldManager.Instance.GetWorld(doodad.Transform.InstanceId)?.Water?.GetWaterSurface(newDoodad.Transform.World.Position, out _) ?? 0f;
-                        var depth = surface - floor;
-
-                        // It seems that when the water is deep, drops to the water surface, otherwise, it sinks to the floor
-                        // Requires more testing, possibly a server setting?
-                        newDoodad.Transform.Local.SetHeight(depth < 30f ? floor : Math.Max(floor, surface));
-
-                        // Save new doodad
-                        newDoodad.InitDoodad();
-                        newDoodad.Spawn();
-                        newDoodad.Save();
-
-                        // Remove data from trade pack slot
-                        doodad.ItemTemplateId = 0;
-                        doodad.ItemId = 0;
-
-                        // Hacky way to force move to next phase to reset doodad to default before saving
-                        var funcs = DoodadManager.Instance.GetDoodadFuncs(doodad.FuncGroupId);
-                        foreach (var phaseFunc in funcs)
-                        {
-                            if (phaseFunc.FuncType == "DoodadFuncRecoverItem")
-                            {
-                                doodad.DoChangePhase(null, phaseFunc.NextPhase);
-                                break;
-                            }
-                        }
-
-                        // Save new empty data
-                        doodad.Save();
-                    }
-                }
-            }
             ObjectIdManager.Instance.ReleaseId(doodad.ObjId);
             doodad.IsPersistent = false;
             doodad.Delete();
