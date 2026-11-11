@@ -49,6 +49,15 @@ public class SaveManager(
         {
             saveTask = null;
         }
+        // Fix: DoSave() silently returns false when a periodic autosave is still running.
+        // During shutdown that meant the final save could be skipped entirely and any
+        // changes made after the in-flight save would never hit the database.
+        // Wait for the in-flight save to finish before doing the final one.
+        var waitStart = DateTime.UtcNow;
+        while (_isSaving && DateTime.UtcNow - waitStart < TimeSpan.FromSeconds(30))
+            await System.Threading.Tasks.Task.Delay(100);
+        if (_isSaving)
+            Logger.Warn("StopAsync - a periodic autosave is still running after 30 seconds, final save may be incomplete");
         // Do one final save here
         DoSave();
     }
