@@ -388423,5 +388423,141 @@
       "Pitch": 0.0,
       "Yaw": 60.0
     }
+  },
+  {
+    "UnitId": 4122, // Windheart Lake Altar (issue #1280, quest 3205: altar did not exist in the world; anchored next to quest NPC Shaman Huslee)
+    "Position": {
+      "X": 25982.8,
+      "Y": 6950.0,
+      "Z": 340.5
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11082.4,
+      "Y": 12886.2,
+      "Z": 157.2
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11088.9,
+      "Y": 12903.5,
+      "Z": 155.8
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11110.6,
+      "Y": 12888.4,
+      "Z": 156.4
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11117.3,
+      "Y": 12902.7,
+      "Z": 157.5
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11075.1,
+      "Y": 12908.9,
+      "Z": 156.9
+    }
+  },
+  {
+    "UnitId": 2961, // Red Poppy (issue #1257, quest 111: only 3 spawned, quest needs 5; extra spawns along the path)
+    "Position": {
+      "X": 11106.8,
+      "Y": 12910.2,
+      "Z": 156.2
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11152.3,
+      "Y": 11968.4,
+      "Z": 144.8
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11170.1,
+      "Y": 12005.2,
+      "Z": 146.1
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11138.5,
+      "Y": 12031.7,
+      "Z": 149.7
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11108.2,
+      "Y": 12055.4,
+      "Z": 145.6
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11077.4,
+      "Y": 11996.8,
+      "Z": 145.1
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11061.2,
+      "Y": 12068.9,
+      "Z": 143.4
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11193.6,
+      "Y": 11942.7,
+      "Z": 143.2
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11214.8,
+      "Y": 12010.3,
+      "Z": 144.7
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11125.9,
+      "Y": 11909.5,
+      "Z": 140.6
+    }
+  },
+  {
+    "UnitId": 1001, // Trash (issue #1259, quest 307: more trash piles across Marianople)
+    "Position": {
+      "X": 11095.3,
+      "Y": 11962.1,
+      "Z": 141.9
+    }
   }
 ]

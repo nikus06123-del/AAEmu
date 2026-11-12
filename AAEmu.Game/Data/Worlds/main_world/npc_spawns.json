@@ -75866,11 +75866,11 @@
         }
     },
     {
-        "UnitId": 3425, // Nubo
+        "UnitId": 3425, // Nubo (issue #1047: Z lowered from 460.26 to the mine floor, see Iron Veins/kobolds at Z 437-440 nearby)
         "Position": {
             "X": 21350.676,
             "Y": 8973.84,
-            "Z": 460.26
+            "Z": 438.6
         }
     },
     {
