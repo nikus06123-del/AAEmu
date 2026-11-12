@@ -8,7 +8,8 @@ namespace AAEmu.Game.Scripts.Commands;
 
 public class Appellation : ICommand
 {
-    public string[] CommandNames { get; set; } = ["title", "addtitle", "add_title", "appellation"];
+    // Issue #992: the client's command hints suggest /settitle and /set_title for this command
+    public string[] CommandNames { get; set; } = ["title", "addtitle", "add_title", "appellation", "settitle", "set_title"];
 
     public void OnLoad()
     {

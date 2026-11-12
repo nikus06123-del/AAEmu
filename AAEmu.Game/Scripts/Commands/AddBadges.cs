@@ -9,7 +9,8 @@ namespace AAEmu.Game.Scripts.Commands;
 
 public class AddBadges : ICommand
 {
-    public string[] CommandNames { get; set; } = ["vocation", "vocationpoints", "add_vp", "add_vb"];
+    // Issue #992: the client's command hints suggest /vocation_points for this command
+    public string[] CommandNames { get; set; } = ["vocation", "vocationpoints", "vocation_points", "add_vp", "add_vb"];
 
     public void OnLoad()
     {
