@@ -265,5 +265,17 @@
         "Z": 149,
         "Yaw": 90,
         "SubZoneId": 578
-	}
+	},
+    {
+        // Issue #1000: exit portal at the back of Hadir's Farm (doodad 4927, instance_hadir_farm)
+        // uses SpecialEffect Return value1=316. Coordinates taken from recalls.json Id 605 (Hadir Farm).
+        "Id": 316,
+        "Name": "Hadir Farm Exit (Ynystere)",
+        "ZoneId": 139,
+        "X": 20023.23,
+        "Y": 12779.68,
+        "Z": 136.45,
+        "Yaw": 76.0,
+        "SubZoneId": 316
+    }
 ]
