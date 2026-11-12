@@ -20,6 +20,7 @@ using AAEmu.Game.Models.Game.Items;
 using AAEmu.Game.Models.Game.Items.Actions;
 using AAEmu.Game.Models.Game.Mails;
 using AAEmu.Game.Models.Game.Skills;
+using AAEmu.Game.Models.Game.Teleport;
 using AAEmu.Game.Models.Game.World;
 using AAEmu.Game.Models.Game.World.Transform;
 using AAEmu.Game.Models.StaticValues;
@@ -592,6 +593,51 @@ public class HousingManager(
         connection.ActiveChar.SendPacket(new SCMyHousePacket(house));
         house.Spawn();
         UpdateTaxInfo(house);
+
+        // Issue #1208: a house placed on top of a character traps them inside the walls
+        // (the placement preview does not reliably prevent overlap, e.g. when building a
+        // quest design right where the player stands). Push affected characters out.
+        PushCharactersOutOfHouse(house);
+    }
+
+    /// <summary>
+    /// Moves characters standing inside a newly placed house's footprint to just outside of it (issue #1208).
+    /// The server does not know the exact model bounds, so the footprint is estimated from the
+    /// garden radius (the offset of the garden square corner). The estimate errs on the small
+    /// side so that players standing in the garden are not disturbed unnecessarily.
+    /// </summary>
+    /// <param name="house">The house that was just spawned</param>
+    private static void PushCharactersOutOfHouse(House house)
+    {
+        var gardenRadius = house.Template?.GardenRadius ?? 0f;
+        // The house body occupies roughly the inner 60% of the garden square; fall back to a
+        // small-house-sized footprint when the template has no garden radius at all.
+        var houseRadius = gardenRadius > 0f ? gardenRadius * 0.6f : 10f;
+        var center = house.Transform.World.Position;
+
+        var characters = WorldManager.GetAround<Character>(house, houseRadius + 2f);
+        foreach (var character in characters)
+        {
+            var pos = character.Transform.World.Position;
+            var dx = pos.X - center.X;
+            var dy = pos.Y - center.Y;
+            var dist = MathF.Sqrt(dx * dx + dy * dy);
+            if (dist > houseRadius)
+                continue;
+
+            // Push out along the center->character direction, just past the estimated wall line
+            var nx = dist > 0.1f ? dx / dist : 1f;
+            var ny = dist > 0.1f ? dy / dist : 0f;
+            var targetDist = houseRadius + 2f;
+            var newX = center.X + nx * targetDist;
+            var newY = center.Y + ny * targetDist;
+            var newZ = house.ParentWorld?.Template?.Floor?.GetFloor(newX, newY, center.Z, FloorContext.Spawn) ?? center.Z;
+
+            Logger.Debug($"House {house.Id} ({house.Template?.Name}) spawned on top of {character.Name} ({character.Id}), pushing out of the footprint");
+            character.DisabledSetPosition = true;
+            character.SendPacket(new SCTeleportUnitPacket(TeleportReason.MoveToLocation, 0, newX, newY, newZ,
+                character.Transform.World.Rotation.Z.DegToRad()));
+        }
     }
 
     /// <summary>
