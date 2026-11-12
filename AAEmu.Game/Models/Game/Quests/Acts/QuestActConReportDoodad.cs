@@ -31,7 +31,10 @@ public class QuestActConReportDoodad(QuestComponentTemplate parentComponent) : Q
 
     public override void FinalizeQuest(Quest quest, QuestAct questAct)
     {
-        quest.Owner.Events.OnReportDoodad += questAct.OnReportDoodad;
+        // Fix: this used to subscribe (+) again instead of unsubscribing (-), stacking a
+        // duplicate OnReportDoodad handler every time the quest got re-initialized, which
+        // made doodad turn-ins fire the report logic multiple times and leaked the act
+        quest.Owner.Events.OnReportDoodad -= questAct.OnReportDoodad;
         base.FinalizeQuest(quest, questAct);
     }
 
