@@ -159,6 +159,8 @@ public class DuelManager : Singleton<DuelManager>, IDuelManager
 
         SaveFactions.Remove(character.Id);
         character.SetFaction(restoreFactionId);
+        // Let the client refresh the restored faction/HP display right away (PR #1813)
+        character.BroadcastPacket(new SCUnitPointsPacket(character.ObjId, character.Hp, character.Mp), true);
     }
 
     public void DuelStart(uint id)
